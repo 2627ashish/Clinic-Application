@@ -29,6 +29,9 @@ class PatientPortalServiceTest {
         when(patients.findFirstByPhoneNumberEndingWith("8273161338")).thenReturn(Optional.of(patient));
 
         String code = service.sendOtp("8273161338").demoCode();
+        verify(publisher).publishText(
+                "918273161338",
+                "Your Chauhan Dental Clinic login OTP is " + code + ". Valid for 10 minutes.");
         var session = service.verifyOtp("8273161338", code);
 
         assertThat(session.patientName()).isEqualTo("ashish");

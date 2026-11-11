@@ -4,9 +4,9 @@ import com.chaula.dental.messaging.event.WhatsAppInboundMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -16,13 +16,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WhatsAppWebhookService {
     private final ObjectMapper objectMapper;
-    private final KafkaTemplate<Object, Object> kafkaTemplate;
+    private final WhatsAppInboundEventSender eventSender;
+    private final WhatsAppInboundMessageHandler inboundMessageHandler;
 
     @Value("${whatsapp.webhook.app-secret:}")
     private String appSecret;
@@ -76,7 +80,7 @@ public class WhatsAppWebhookService {
             }
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Could not queue the WhatsApp message. Meta can retry the webhook.");
+                    "Could not queue or process the WhatsApp message. Meta can retry the webhook.", exception);
         }
     }
 
@@ -109,11 +113,22 @@ public class WhatsAppWebhookService {
 
         WhatsAppInboundMessage event = new WhatsAppInboundMessage(messageId, phoneNumber, text, replyId);
         try {
-            kafkaTemplate.send(inboundTopic, phoneNumber, event).get(5, TimeUnit.SECONDS);
+            eventSender.send(inboundTopic, phoneNumber, event).get(6, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw exception;
+            processInboundDirectly(event, exception);
+        } catch (ExecutionException | TimeoutException | RuntimeException exception) {
+            processInboundDirectly(event, exception);
         }
+    }
+
+    private void processInboundDirectly(WhatsAppInboundMessage event, Exception kafkaException) {
+        String digits = event.phoneNumber().replaceAll("\\D", "");
+        String recipientSuffix = digits.substring(Math.max(0, digits.length() - 4));
+        log.warn("Kafka broker unavailable. Processing inbound WhatsApp message directly; "
+                        + "recipient ending in {}",
+                recipientSuffix, kafkaException);
+        inboundMessageHandler.process(event);
     }
 
     private void verifySignature(byte[] payload, String suppliedSignature) {

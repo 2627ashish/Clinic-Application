@@ -1,5 +1,6 @@
 package com.chaula.dental.service;
 
+import com.chaula.dental.messaging.event.WhatsAppInboundMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -9,9 +10,13 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class WhatsAppWebhookServiceTest {
     @Test
     void ignoresStatusReceiptsAndEntriesWithoutChanges() {
@@ -41,7 +46,7 @@ class WhatsAppWebhookServiceTest {
 
     @Test
     void acceptsUnsignedWebhookOnlyWhenLocalSignatureRequirementIsDisabled() {
-        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null, null);
         ReflectionTestUtils.setField(service, "signatureRequired", false);
         ReflectionTestUtils.setField(service, "appSecret", "local-test-secret");
         byte[] emptyValidWebhook = "{\"object\":\"whatsapp_business_account\",\"entry\":[]}"
@@ -52,7 +57,7 @@ class WhatsAppWebhookServiceTest {
 
     @Test
     void rejectsUnsignedWebhookWhenSignatureIsRequired() {
-        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null, null);
         ReflectionTestUtils.setField(service, "signatureRequired", true);
         ReflectionTestUtils.setField(service, "appSecret", "test-secret");
         byte[] messageWebhook = """
@@ -67,7 +72,7 @@ class WhatsAppWebhookServiceTest {
 
     @Test
     void acceptsMetaSignatureCalculatedFromExactRawPayload() throws Exception {
-        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null, null);
         ReflectionTestUtils.setField(service, "signatureRequired", true);
         ReflectionTestUtils.setField(service, "appSecret", " test-secret ");
         byte[] payload = """
@@ -85,7 +90,7 @@ class WhatsAppWebhookServiceTest {
 
     @Test
     void reportsMissingAppSecretAsServerConfigurationError() {
-        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null, null);
         ReflectionTestUtils.setField(service, "signatureRequired", true);
         ReflectionTestUtils.setField(service, "appSecret", "");
         byte[] messageWebhook = """
@@ -98,8 +103,61 @@ class WhatsAppWebhookServiceTest {
                 .hasMessageContaining("set WHATSAPP_APP_SECRET");
     }
 
+    @Test
+    void processesInboundMessageDirectlyWhenKafkaSendFails() {
+        List<WhatsAppInboundMessage> processedMessages = new ArrayList<>();
+        WhatsAppInboundEventSender eventSender =
+                (topic, key, event) -> CompletableFuture.failedFuture(
+                        new IllegalStateException("broker unavailable"));
+        WhatsAppWebhookService service = new WhatsAppWebhookService(
+                new ObjectMapper(), eventSender, processedMessages::add);
+        ReflectionTestUtils.setField(service, "signatureRequired", false);
+        ReflectionTestUtils.setField(service, "inboundTopic", "whatsapp-inbound");
+
+        service.receive(messagePayload(), null);
+
+        assertThat(processedMessages).containsExactly(new WhatsAppInboundMessage(
+                "message-1", "919810764715", "Hi", ""));
+    }
+
+    @Test
+    void processesInboundMessageDirectlyWhenKafkaSendThrowsImmediately() {
+        List<WhatsAppInboundMessage> processedMessages = new ArrayList<>();
+        WhatsAppInboundEventSender eventSender = (topic, key, event) -> {
+            throw new IllegalStateException("broker unavailable");
+        };
+        WhatsAppWebhookService service = new WhatsAppWebhookService(
+                new ObjectMapper(), eventSender, processedMessages::add);
+        ReflectionTestUtils.setField(service, "signatureRequired", false);
+
+        service.receive(messagePayload(), null);
+
+        assertThat(processedMessages).containsExactly(new WhatsAppInboundMessage(
+                "message-1", "919810764715", "Hi", ""));
+    }
+
+    @Test
+    void doesNotProcessInboundMessageDirectlyWhenKafkaAcknowledgesIt() {
+        List<WhatsAppInboundMessage> processedMessages = new ArrayList<>();
+        WhatsAppInboundEventSender eventSender = (topic, key, event) -> CompletableFuture.completedFuture(null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(
+                new ObjectMapper(), eventSender, processedMessages::add);
+        ReflectionTestUtils.setField(service, "signatureRequired", false);
+
+        service.receive(messagePayload(), null);
+
+        assertThat(processedMessages).isEmpty();
+    }
+
+    private byte[] messagePayload() {
+        return """
+                {"object":"whatsapp_business_account","entry":[{"changes":[{"value":{"messages":[{"from":"919810764715","id":"message-1","type":"text","text":{"body":"Hi"}}]}}]}]}
+                """
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
     private WhatsAppWebhookService requiredSignatureService() {
-        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null);
+        WhatsAppWebhookService service = new WhatsAppWebhookService(new ObjectMapper(), null, null);
         ReflectionTestUtils.setField(service, "signatureRequired", true);
         ReflectionTestUtils.setField(service, "appSecret", "");
         return service;

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 @Slf4j
@@ -18,6 +19,7 @@ import java.util.concurrent.CompletionException;
 @RequiredArgsConstructor
 public class KafkaWhatsAppMessagePublisher implements WhatsAppMessagePublisher {
     private final WhatsAppOutboundEventSender eventSender;
+    private final WhatsAppDirectMessageSender directMessageSender;
 
     @Value("${whatsapp.kafka.outbound-topic:whatsapp-outbound}")
     private String outboundTopic;
@@ -72,16 +74,32 @@ public class KafkaWhatsAppMessagePublisher implements WhatsAppMessagePublisher {
 
     private void publish(String topic, String phoneNumber, Object message) {
         try {
-            eventSender.send(topic, phoneNumber, message)
+            CompletableFuture<?> send = eventSender.send(topic, phoneNumber, message);
+            if (send == null) {
+                throw new IllegalStateException("Kafka sender returned no completion result");
+            }
+            send.whenComplete((result, error) -> {
+                if (error != null) dispatchDirectly(phoneNumber, message, unwrap(error));
+            });
+        } catch (RuntimeException exception) {
+            dispatchDirectly(phoneNumber, message, exception);
+        }
+    }
+
+    private void dispatchDirectly(String phoneNumber, Object message, Throwable kafkaException) {
+        log.warn("Kafka broker unavailable. Dispatching WhatsApp message directly via Meta API; "
+                        + "recipient ending in {}",
+                lastFourDigits(phoneNumber), kafkaException);
+        try {
+            CompletableFuture.runAsync(() -> directMessageSender.send(message))
                     .whenComplete((result, error) -> {
                         if (error != null) {
-                            log.warn("Kafka broker unreachable. WhatsApp message skipped for now; "
-                                            + "recipient ending in {}",
+                            log.error("Direct WhatsApp delivery failed for recipient ending in {}",
                                     lastFourDigits(phoneNumber), unwrap(error));
                         }
                     });
         } catch (RuntimeException exception) {
-            log.warn("Kafka broker unreachable. WhatsApp message skipped for now; recipient ending in {}",
+            log.error("Could not schedule direct WhatsApp delivery for recipient ending in {}",
                     lastFourDigits(phoneNumber), exception);
         }
     }
@@ -91,7 +109,7 @@ public class KafkaWhatsAppMessagePublisher implements WhatsAppMessagePublisher {
     }
 
     private String lastFourDigits(String phoneNumber) {
-        String digits = phoneNumber.replaceAll("\\D", "");
+        String digits = phoneNumber == null ? "" : phoneNumber.replaceAll("\\D", "");
         return digits.substring(Math.max(0, digits.length() - 4));
     }
 }

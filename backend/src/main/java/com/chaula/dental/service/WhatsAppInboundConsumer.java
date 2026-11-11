@@ -9,7 +9,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 
 @Component
 @RequiredArgsConstructor
-public class WhatsAppInboundConsumer {
+public class WhatsAppInboundConsumer implements WhatsAppInboundMessageHandler {
     private final WhatsAppSessionService sessionService;
     private final WhatsAppConversationService conversationService;
     private final PatientRepository patientRepository;
@@ -31,6 +31,11 @@ public class WhatsAppInboundConsumer {
             return;
         }
         sessionService.handle(inbound);
+    }
+
+    @Override
+    public void process(WhatsAppInboundMessage message) {
+        consume(message);
     }
 
     private String marketingPreferenceCommand(WhatsAppInboundMessage inbound) {
