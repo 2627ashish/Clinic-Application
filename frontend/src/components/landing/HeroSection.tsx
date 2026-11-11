@@ -20,9 +20,14 @@ export default function HeroSection({ onQuickBooking }: HeroSectionProps) {
         <span className="inline-flex items-center gap-2 rounded-full border border-clinic-green/10 bg-white px-3.5 py-2 text-sm font-semibold text-clinic-green shadow-sm">
           <ShieldCheck size={16} aria-hidden="true" /> Welcoming new patients
         </span>
-        <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.12] tracking-tight text-clinic-ink sm:text-5xl lg:text-6xl">
-          Dr. Chauhan Dental Clinic
-        </h1>
+        <div className="mt-6 max-w-2xl">
+          <h1 className="text-4xl font-bold leading-[1.12] tracking-tight text-clinic-ink sm:text-5xl lg:text-6xl">
+            Chauhan Dental Clinic
+          </h1>
+          <p className="mt-2 text-2xl font-semibold text-emerald-800 sm:text-3xl">
+            Dr. B.S. Chauhan
+          </p>
+        </div>
         <p className="mt-5 max-w-xl text-lg leading-7 text-slate-600">
           Advanced, Painless Dental Care in Sector-44 & Sector-82, Noida
         </p>
