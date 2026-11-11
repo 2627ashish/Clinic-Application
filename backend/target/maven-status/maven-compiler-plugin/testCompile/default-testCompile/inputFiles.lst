@@ -1,0 +1,14 @@
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/AppointmentIntakeServiceImplTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/AppointmentWhatsAppCopyTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/CampaignServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/ClinicScheduleTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/DoctorAuthServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/KafkaWhatsAppMessagePublisherTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/MetaWhatsAppCloudApiClientTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/PatientPortalServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/PhoneUtilsTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/WhatsAppConversationServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/WhatsAppInboundConsumerTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/WhatsAppSessionServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/WhatsAppWebhookServiceTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/version2/backend/src/test/java/com/chaula/dental/service/impl/OpenPdfGenerationServiceImplTest.java
