@@ -50,6 +50,15 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
         patient.setFullName(patientName);
         patient.setAge(request.age());
         patient.setGender(request.gender().trim());
+        List<String> medicalHistory = request.medicalHistory() == null ? List.of() : request.medicalHistory().stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::strip)
+                .toList();
+        if (medicalHistory.stream().anyMatch(value -> value.startsWith("None /"))) medicalHistory = List.of();
+        patient.setMedicalHistory(medicalHistory);
+        patient.setOngoingTreatments(cleanOptional(request.ongoingTreatments()));
+        patient.setIsPregnant(request.age() >= 18 && request.gender().equalsIgnoreCase("female")
+                ? request.isPregnant() : null);
         if (request.whatsappMarketingOptIn() != null) {
             patient.setWhatsappMarketingOptIn(request.whatsappMarketingOptIn());
             patient.setWhatsappMarketingOptInAt(request.whatsappMarketingOptIn() ? Instant.now() : null);
@@ -63,6 +72,9 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
                 .consultationType(consultationType)
                 .status(AppointmentStatus.PENDING_DOCTOR_APPROVAL)
                 .chiefComplaintSummary(cleanSymptoms(request.symptomsDescription()))
+                .medicalHistory(savedPatient.getMedicalHistory())
+                .ongoingTreatments(savedPatient.getOngoingTreatments())
+                .isPregnant(savedPatient.getIsPregnant())
                 .build();
         Appointment savedAppointment = appointmentRepository.save(appointment);
         if (consultationType == ConsultationType.ONLINE && savedAppointment.getId() != null) {
@@ -100,6 +112,10 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
 
     private String cleanSymptoms(String symptoms) {
         return symptoms.strip().replaceAll("\\s+", " ");
+    }
+
+    private String cleanOptional(String value) {
+        return value == null || value.isBlank() ? null : value.strip().replaceAll("\\s+", " ");
     }
 
     private AppointmentResponse toResponse(Appointment appointment, Patient patient) {

@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -58,7 +59,10 @@ class AppointmentIntakeServiceImplTest {
                 ClinicLocation.SEC_44,
                 "  Severe toothache \n since yesterday  ",
                 null,
-                null
+                null,
+                List.of("Diabetes / शुगर", "Blood Thinners (Aspirin) / खून पतला करने की दवा"),
+                "Prior dental treatment",
+                true
         );
         when(patientRepository.findByPhoneNumber("919876543210")).thenReturn(Optional.empty());
         when(patientRepository.findFirstByPhoneNumberEndingWith("9876543210")).thenReturn(Optional.of(existingPatient));
@@ -75,6 +79,10 @@ class AppointmentIntakeServiceImplTest {
         assertThat(existingPatient.getAge()).isEqualTo(31);
         assertThat(existingPatient.getGender()).isEqualTo("Female");
         assertThat(existingPatient.getPhoneNumber()).isEqualTo("919876543210");
+        assertThat(existingPatient.getMedicalHistory()).containsExactly(
+                "Diabetes / शुगर", "Blood Thinners (Aspirin) / खून पतला करने की दवा");
+        assertThat(existingPatient.getOngoingTreatments()).isEqualTo("Prior dental treatment");
+        assertThat(existingPatient.getIsPregnant()).isTrue();
         assertThat(response.appointmentId()).isEqualTo("appointment-1");
         assertThat(response.patientName()).isEqualTo("New Name");
         assertThat(response.status()).isEqualTo(AppointmentStatus.PENDING_DOCTOR_APPROVAL.name());
@@ -89,6 +97,8 @@ class AppointmentIntakeServiceImplTest {
         ArgumentCaptor<Appointment> appointmentCaptor = ArgumentCaptor.forClass(Appointment.class);
         verify(appointmentRepository).save(appointmentCaptor.capture());
         assertThat(appointmentCaptor.getValue().getPatientId()).isEqualTo("patient-1");
+        assertThat(appointmentCaptor.getValue().getMedicalHistory()).contains("Diabetes / शुगर");
+        assertThat(appointmentCaptor.getValue().getIsPregnant()).isTrue();
     }
 
     @Test

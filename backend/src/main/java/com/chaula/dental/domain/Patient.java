@@ -9,6 +9,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.annotation.Id;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -26,6 +27,9 @@ public class Patient {
 
     private Integer age;
     private String gender;
+    private List<String> medicalHistory;
+    private String ongoingTreatments;
+    private Boolean isPregnant;
 
     @Builder.Default
     private boolean whatsappMarketingOptIn = false;

@@ -3,6 +3,8 @@ import { MessageCircle } from 'lucide-react';
 import QuickBookingModal from '../components/booking/QuickBookingModal';
 import AiSelfHelpReceptionistModal from '../components/intake/AiSelfHelpReceptionistModal';
 import ClinicContactBar from '../components/landing/ClinicContactBar';
+import DentalFaqSection from '../components/landing/DentalFaqSection';
+import DoctorVideoShowcase from '../components/landing/DoctorVideoShowcase';
 import HeroSection from '../components/landing/HeroSection';
 import ServicesSection from '../components/landing/ServicesSection';
 import type { ClinicPage } from '../components/Navbar';
@@ -38,6 +40,8 @@ export default function PatientLandingPage({ onNavigate }: PatientLandingPagePro
         }}
       />
       <ServicesSection />
+      <DentalFaqSection />
+      <DoctorVideoShowcase />
 
       <ClinicContactBar />
 

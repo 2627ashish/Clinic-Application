@@ -9,6 +9,7 @@ import com.chaula.dental.domain.TreatmentAndBill;
 import com.chaula.dental.dto.AppointmentStatusUpdateRequest;
 import com.chaula.dental.dto.AppointmentView;
 import com.chaula.dental.dto.ConsultationCompleteRequest;
+import com.chaula.dental.dto.WalkInRequest;
 import com.chaula.dental.repository.AppointmentRepository;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
@@ -41,6 +42,46 @@ public class AppointmentService {
                     return AppointmentView.from(appointment, patient.getFullName(), patient.getPhoneNumber());
                 })
                 .toList();
+    }
+
+    public Appointment createWalkIn(WalkInRequest request) {
+        String phoneNumber;
+        try {
+            phoneNumber = com.chaula.dental.util.PhoneUtils.normalizeIndianPhone(request.phoneNumber());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+
+        Patient patient = patientRepository.findByPhoneNumber(phoneNumber)
+                .or(() -> patientRepository.findFirstByPhoneNumberEndingWith(
+                        phoneNumber.substring(phoneNumber.length() - 10)))
+                .orElseGet(() -> Patient.builder().phoneNumber(phoneNumber).build());
+        patient.setPhoneNumber(phoneNumber);
+        patient.setFullName(request.patientName().strip());
+        patient.setAge(request.age());
+        patient.setGender(request.gender().strip());
+        Patient savedPatient = patientRepository.save(patient);
+
+        return appointmentRepository.save(Appointment.builder()
+                .patientId(savedPatient.getId())
+                .appointmentTime(LocalDateTime.now(ZoneId.of("Asia/Kolkata")))
+                .clinicLocation(request.clinicLocation())
+                .consultationType(ConsultationType.IN_CLINIC)
+                .status(AppointmentStatus.CONFIRMED)
+                .chiefComplaintSummary(request.notes() == null ? "Walk-in / phone intake" : request.notes().strip())
+                .doctorNotes(request.notes() == null || request.notes().isBlank() ? null : request.notes().strip())
+                .intakeSource(request.source())
+                .quotedFee(request.quotedFee())
+                .medicalHistory(savedPatient.getMedicalHistory() == null ? List.of() : savedPatient.getMedicalHistory())
+                .ongoingTreatments(savedPatient.getOngoingTreatments())
+                .isPregnant(savedPatient.getIsPregnant())
+                .build());
+    }
+
+    public List<TreatmentAndBill> history(String appointmentId) {
+        Appointment appointment = findAppointment(appointmentId);
+        findPatient(appointment.getPatientId());
+        return treatmentRepository.findByPatientIdOrderByCreatedAtDesc(appointment.getPatientId());
     }
 
     public Appointment updateStatus(String id, AppointmentStatusUpdateRequest request) {

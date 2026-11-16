@@ -27,6 +27,11 @@ export interface Appointment {
   status: AppointmentStatus;
   chiefComplaintSummary: string;
   doctorNotes: string | null;
+  medicalHistory: string[] | null;
+  ongoingTreatments: string | null;
+  isPregnant: boolean | null;
+  intakeSource: string | null;
+  quotedFee: number | null;
 }
 
 export interface AppointmentView extends Appointment {
@@ -72,6 +77,37 @@ export interface ConsultationCompleteRequest {
   aftercareGuidelines: string;
   billItems: BillItem[];
   paidAmount: number;
+}
+
+export type PatientDocumentCategory =
+  | 'XRAY_RVG'
+  | 'EXTERNAL_PRESCRIPTION'
+  | 'LAB_REPORT'
+  | 'OTHER'
+  | 'HANDWRITTEN_RX';
+
+export interface PatientDocumentView {
+  id: string;
+  appointmentId: string;
+  fileName: string;
+  contentType: string;
+  category: PatientDocumentCategory;
+  createdAt: string;
+}
+
+export interface WalkInRequest {
+  patientName: string;
+  phoneNumber: string;
+  age: number;
+  gender: 'Male' | 'Female' | 'Other';
+  clinicLocation: ClinicLocation;
+  source: 'PHONE_CALL' | 'DIRECT_WALK_IN';
+  quotedFee: number | null;
+  notes: string;
+}
+
+export interface ClinicConfig {
+  videoCallNumber: string;
 }
 
 export interface BroadcastRequest {

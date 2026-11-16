@@ -6,6 +6,8 @@ import com.chaula.dental.domain.ClinicLocation;
 import com.chaula.dental.domain.ConsultationType;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.List;
 
 public record AppointmentView(
         String id,
@@ -18,7 +20,12 @@ public record AppointmentView(
         String meetingLink,
         AppointmentStatus status,
         String chiefComplaintSummary,
-        String doctorNotes
+        String doctorNotes,
+        List<String> medicalHistory,
+        String ongoingTreatments,
+        Boolean isPregnant,
+        String intakeSource,
+        BigDecimal quotedFee
 ) {
     public static AppointmentView from(Appointment appointment, String patientName, String phoneNumber) {
         return new AppointmentView(
@@ -33,7 +40,12 @@ public record AppointmentView(
                 appointment.getMeetingLink(),
                 appointment.getStatus(),
                 appointment.getChiefComplaintSummary(),
-                appointment.getDoctorNotes()
+                appointment.getDoctorNotes(),
+                appointment.getMedicalHistory(),
+                appointment.getOngoingTreatments(),
+                appointment.getIsPregnant(),
+                appointment.getIntakeSource(),
+                appointment.getQuotedFee()
         );
     }
 }

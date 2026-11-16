@@ -102,6 +102,10 @@ public class PatientPortalService {
                 .toList();
     }
 
+    public String patientId(String token) {
+        return authenticatedPatient(token).getId();
+    }
+
     public TreatmentAndBill visit(String token, String appointmentId) {
         Patient patient = authenticatedPatient(token);
         return treatments.findByAppointmentId(appointmentId)

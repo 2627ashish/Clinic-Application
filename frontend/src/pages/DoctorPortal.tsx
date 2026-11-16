@@ -11,6 +11,7 @@ import DoctorDashboard from './DoctorDashboard';
 
 const TOKEN_KEY = 'doctor_auth_token';
 const PASSWORD_CHANGE_KEY = 'doctor_password_change_required';
+const DOCTOR_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 function DoctorLogin({ onLogin }: { onLogin: (token: string, changeRequired: boolean) => void }) {
   const [username, setUsername] = useState('drchauhan');
@@ -176,6 +177,40 @@ export default function DoctorPortal() {
   const [showSettings, setShowSettings] = useState(false);
   const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
   const [setupError, setSetupError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    let timer = 0;
+    const signOutWhenIdle = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(PASSWORD_CHANGE_KEY);
+        setToken('');
+        setMustChange(false);
+        setShowSettings(false);
+      }, DOCTOR_IDLE_TIMEOUT_MS);
+    };
+    const activityEvents: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach((name) => window.addEventListener(name, signOutWhenIdle, { passive: true }));
+    signOutWhenIdle();
+    return () => {
+      window.clearTimeout(timer);
+      activityEvents.forEach((name) => window.removeEventListener(name, signOutWhenIdle));
+    };
+  }, [token]);
+
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(PASSWORD_CHANGE_KEY);
+      setToken('');
+      setMustChange(false);
+      setShowSettings(false);
+    };
+    window.addEventListener('doctor-session-expired', handleExpiredSession);
+    return () => window.removeEventListener('doctor-session-expired', handleExpiredSession);
+  }, []);
 
   useEffect(() => {
     if (token) return;

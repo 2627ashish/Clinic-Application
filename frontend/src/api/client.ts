@@ -5,6 +5,10 @@ import type {
   BroadcastRequest,
   ConsultationCompleteRequest,
   TreatmentAndBill,
+  PatientDocumentView,
+  PatientDocumentCategory,
+  WalkInRequest,
+  ClinicConfig,
 } from '../types';
 
 export const client = axios.create({
@@ -20,6 +24,18 @@ client.interceptors.request.use((config) => {
   const token = isDoctorEndpoint ? localStorage.getItem('doctor_auth_token') : null;
   if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`;
   return config;
+});
+
+client.interceptors.response.use((response) => response, (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    const url = error.config?.url ?? '';
+    const isDoctorEndpoint = url.startsWith('/appointments') || url.startsWith('/campaigns');
+    if (isDoctorEndpoint && error.response?.status === 401 && localStorage.getItem('doctor_auth_token')) {
+      localStorage.removeItem('doctor_auth_token');
+      window.dispatchEvent(new Event('doctor-session-expired'));
+    }
+  }
+  return Promise.reject(error);
 });
 
 export interface DoctorLoginResponse {
@@ -96,6 +112,68 @@ export async function downloadPatientPrescription(token: string, appointmentId: 
     `/patient-portal/visits/${encodeURIComponent(appointmentId)}/pdf`,
     { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' },
   );
+  return response.data;
+}
+
+export async function getPatientDocuments(token: string): Promise<PatientDocumentView[]> {
+  const response = await client.get<PatientDocumentView[]>('/patient-portal/documents', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+}
+
+export async function downloadPatientDocument(token: string, documentId: string): Promise<Blob> {
+  const response = await client.get<Blob>(
+    `/patient-portal/documents/${encodeURIComponent(documentId)}/download`,
+    { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' },
+  );
+  return response.data;
+}
+
+export async function createWalkIn(request: WalkInRequest): Promise<{ id: string }> {
+  const response = await client.post<{ id: string }>('/appointments/walk-ins', request);
+  return response.data;
+}
+
+export async function uploadAppointmentDocument(
+  appointmentId: string,
+  file: File,
+  category: PatientDocumentCategory,
+): Promise<PatientDocumentView> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', category);
+  const response = await client.post<PatientDocumentView>(
+    `/appointments/${encodeURIComponent(appointmentId)}/documents`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return response.data;
+}
+
+export async function uploadHandwrittenPrescription(
+  appointmentId: string,
+  file: Blob,
+): Promise<PatientDocumentView> {
+  const formData = new FormData();
+  formData.append('file', file, 'handwritten-prescription.png');
+  const response = await client.post<PatientDocumentView>(
+    `/appointments/${encodeURIComponent(appointmentId)}/handwritten-rx`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return response.data;
+}
+
+export async function getPatientVisitHistory(appointmentId: string): Promise<TreatmentAndBill[]> {
+  const response = await client.get<TreatmentAndBill[]>(
+    `/appointments/${encodeURIComponent(appointmentId)}/history`,
+  );
+  return response.data;
+}
+
+export async function getClinicConfig(): Promise<ClinicConfig> {
+  const response = await client.get<ClinicConfig>('/clinic/config');
   return response.data;
 }
 

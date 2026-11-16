@@ -7,6 +7,15 @@ import { clinicDetails, clinicLocations, isClinicLocation, normalizeIndianPhone 
 import type { ClinicLocation } from '../../utils/clinic';
 import WheelSlotPicker from '../intake/WheelSlotPicker';
 
+const medicalHistoryOptions = [
+  'Diabetes / शुगर',
+  'High BP / उच्च रक्तचाप',
+  'Heart Disease / दिल की बीमारी',
+  'Allergies (Penicillin/Sulfa) / दवा से एलर्जी',
+  'Blood Thinners (Aspirin) / खून पतला करने की दवा',
+  'None / कोई नहीं',
+];
+
 interface QuickBookingModalProps {
   onClose: () => void;
   initialSymptoms?: string;
@@ -28,6 +37,9 @@ export default function QuickBookingModal({
   const [patientName, setPatientName] = useState('');
   const [age, setAge] = useState(initialAge ? String(initialAge) : '');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | ''>(initialGender);
+  const [medicalHistory, setMedicalHistory] = useState<string[]>([]);
+  const [ongoingTreatments, setOngoingTreatments] = useState('');
+  const [isPregnant, setIsPregnant] = useState<boolean | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [symptomsDescription, setSymptomsDescription] = useState(initialSymptoms);
   const [whatsappMarketingOptIn, setWhatsappMarketingOptIn] = useState(false);
@@ -51,6 +63,10 @@ export default function QuickBookingModal({
       setError('Enter an age from 1 to 120 and choose a gender.');
       return;
     }
+    if (gender === 'Female' && Number(age) >= 18 && isPregnant === null) {
+      setError('Please answer the pregnancy and breastfeeding question to continue.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -59,6 +75,9 @@ export default function QuickBookingModal({
         phoneNumber: normalizedPhone,
         age: Number(age),
         gender,
+        medicalHistory,
+        ongoingTreatments: ongoingTreatments.trim(),
+        isPregnant: gender === 'Female' && Number(age) >= 18 ? isPregnant : null,
         preferredTime,
         clinicLocation,
         symptomsDescription: symptomsDescription.trim(),
@@ -146,7 +165,10 @@ export default function QuickBookingModal({
               <label className="text-sm font-semibold text-clinic-ink">
                 Age
                 <input required min="1" max="120" type="number" inputMode="numeric" value={age}
-                  onChange={(event) => setAge(event.target.value)}
+                  onChange={(event) => {
+                    setAge(event.target.value);
+                    if (Number(event.target.value) < 18) setIsPregnant(null);
+                  }}
                   className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />
               </label>
               <label className="text-sm font-semibold text-clinic-ink">
@@ -159,7 +181,10 @@ export default function QuickBookingModal({
                 <div className="mt-1.5 flex gap-2">
                   {(['Male', 'Female', 'Other'] as const).map((value) => (
                     <button key={value} type="button" aria-pressed={gender === value}
-                      onClick={() => setGender(value)}
+                      onClick={() => {
+                        setGender(value);
+                        if (value !== 'Female' || Number(age) < 18) setIsPregnant(null);
+                      }}
                       className={`min-h-11 flex-1 rounded-full border px-3 text-sm font-semibold ${gender === value ? 'border-clinic-green bg-clinic-mint text-clinic-green' : 'border-slate-200 text-slate-600'}`}>
                       {value}
                     </button>
@@ -167,6 +192,49 @@ export default function QuickBookingModal({
                 </div>
               </fieldset>
             </div>
+            <fieldset>
+              <legend className="text-sm font-semibold text-clinic-ink">Medical history / चिकित्सा इतिहास</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {medicalHistoryOptions.map((item) => {
+                  const selected = medicalHistory.includes(item);
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setMedicalHistory((current) => {
+                        if (item === 'None / कोई नहीं') return selected ? [] : [item];
+                        const withoutNone = current.filter((entry) => entry !== 'None / कोई नहीं');
+                        return selected ? withoutNone.filter((entry) => entry !== item) : [...withoutNone, item];
+                      })}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold ${selected ? 'border-clinic-green bg-clinic-mint text-clinic-green' : 'border-slate-200 text-slate-600'}`}
+                    >
+                      {item}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <label className="block text-sm font-semibold text-clinic-ink">
+              Any prior medical/dental treatments? / कोई अन्य बीमारी या इलाज?
+              <textarea maxLength={1000} rows={2} value={ongoingTreatments}
+                onChange={(event) => setOngoingTreatments(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />
+            </label>
+            {gender === 'Female' && Number(age) >= 18 && (
+              <fieldset className="text-sm font-semibold text-clinic-ink">
+                <legend>Are you currently pregnant or breastfeeding? / क्या आप गर्भवती हैं या स्तनपान करा रही हैं?</legend>
+                <div className="mt-2 flex gap-2">
+                  {([[true, 'Yes / हाँ'], [false, 'No / नहीं']] as const).map(([answer, label]) => (
+                    <button key={label} type="button" aria-pressed={isPregnant === answer}
+                      onClick={() => setIsPregnant(answer)}
+                      className={`min-h-11 flex-1 rounded-full border px-3 text-sm font-semibold ${isPregnant === answer ? 'border-clinic-green bg-clinic-mint text-clinic-green' : 'border-slate-200 text-slate-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <label className="block text-sm font-semibold text-clinic-ink">
               Quick reason for visit
               <textarea required maxLength={1000} rows={3} value={symptomsDescription} onChange={(event) => setSymptomsDescription(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />

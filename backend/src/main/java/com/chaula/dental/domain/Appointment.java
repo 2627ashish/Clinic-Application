@@ -9,6 +9,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @Builder
@@ -28,6 +30,11 @@ public class Appointment {
     private AppointmentStatus status;
     private String chiefComplaintSummary;
     private String doctorNotes;
+    private List<String> medicalHistory;
+    private String ongoingTreatments;
+    private Boolean isPregnant;
+    private String intakeSource;
+    private BigDecimal quotedFee;
 
     @Builder.Default
     private Instant createdAt = Instant.now();

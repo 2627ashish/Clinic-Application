@@ -3,16 +3,20 @@ import type { FormEvent } from 'react';
 import axios from 'axios';
 import { CalendarDays, Download, HeartPulse, LoaderCircle, LogOut } from 'lucide-react';
 import {
+  downloadPatientDocument,
   downloadPatientPrescription,
+  getPatientDocuments,
   getPatientVisits,
   requestPatientOtp,
   verifyPatientOtp,
 } from '../api/client';
 import type { ClinicPage } from '../components/Navbar';
 import type { PatientVisitSummary } from '../api/client';
+import type { PatientDocumentView } from '../types';
 
 const TOKEN_KEY = 'patient_portal_token';
 const NAME_KEY = 'patient_portal_name';
+const PATIENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export default function PatientPortal({ onNavigate }: { onNavigate: (page: ClinicPage) => void }) {
   const [phone, setPhone] = useState('');
@@ -21,6 +25,9 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '');
   const [patientName, setPatientName] = useState(() => localStorage.getItem(NAME_KEY) ?? '');
   const [visits, setVisits] = useState<PatientVisitSummary[]>([]);
+  const [documents, setDocuments] = useState<PatientDocumentView[]>([]);
+  const [documentPreviews, setDocumentPreviews] = useState<Record<string, string>>({});
+  const [portalTab, setPortalTab] = useState<'prescriptions' | 'xrays' | 'other'>('prescriptions');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,14 +35,50 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
 
   useEffect(() => {
     if (!token) return;
+    let active = true;
     setLoading(true);
     void getPatientVisits(token)
-      .then(setVisits)
+      .then((items) => { if (active) setVisits(items); })
       .catch(() => {
-        setError('Your session expired or visit history could not be loaded. Please sign in again.');
-        signOut();
+        if (active) {
+          setError('Your session expired or visit history could not be loaded. Please sign in again.');
+          signOut();
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (active) setLoading(false); });
+    void getPatientDocuments(token)
+      .then(async (items) => {
+        if (active) setDocuments(items);
+        const imageItems = items.filter((item) => item.contentType.startsWith('image/'));
+        const previews = await Promise.all(imageItems.map(async (item) => {
+          const blob = await downloadPatientDocument(token, item.id);
+          return [item.id, URL.createObjectURL(blob)] as const;
+        }));
+        if (active) setDocumentPreviews(Object.fromEntries(previews));
+        else previews.forEach(([, url]) => URL.revokeObjectURL(url));
+      })
+      .catch(() => { if (active) setError('Patient documents could not be loaded. Please refresh or sign in again.'); });
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => () => {
+    Object.values(documentPreviews).forEach((url) => URL.revokeObjectURL(url));
+  }, [documentPreviews]);
+
+  useEffect(() => {
+    if (!token) return;
+    let timer = 0;
+    const resetIdleTimeout = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(signOut, PATIENT_IDLE_TIMEOUT_MS);
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((name) => window.addEventListener(name, resetIdleTimeout, { passive: true }));
+    resetIdleTimeout();
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((name) => window.removeEventListener(name, resetIdleTimeout));
+    };
   }, [token]);
 
   async function sendCode() {
@@ -80,6 +123,8 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     setToken('');
     setPatientName('');
     setVisits([]);
+    setDocuments([]);
+    setDocumentPreviews({});
     setDemoCode('');
     setCode('');
   }
@@ -98,6 +143,27 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
       setError('The prescription could not be downloaded. Please try again.');
     }
   }
+
+  async function downloadDocument(documentId: string, fileName: string) {
+    setError('');
+    try {
+      const blob = await downloadPatientDocument(token, documentId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError('The document could not be downloaded. Please try again.');
+    }
+  }
+
+  const visibleDocuments = documents.filter((document) => portalTab === 'prescriptions'
+    ? document.category === 'EXTERNAL_PRESCRIPTION' || document.category === 'HANDWRITTEN_RX'
+    : portalTab === 'xrays'
+      ? document.category === 'XRAY_RVG'
+      : document.category === 'LAB_REPORT' || document.category === 'OTHER');
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-8 sm:py-12">
@@ -144,14 +210,34 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
             </div>
             <button onClick={signOut} className="inline-flex min-h-11 items-center gap-2 self-start rounded-xl border border-slate-200 px-4 font-semibold text-slate-600 sm:self-auto"><LogOut size={16} /> Sign out</button>
           </header>
-          <section className="mt-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
-            <h2 className="flex items-center gap-2 text-lg font-bold text-clinic-ink"><CalendarDays size={20} className="text-clinic-green" /> Past consultations</h2>
+          <section className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+            <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4" role="tablist" aria-label="Patient records">
+              {([
+                ['prescriptions', 'Official Prescriptions & Bills'],
+                ['xrays', 'Dental X-Rays'],
+                ['other', 'Lab & Other Docs'],
+              ] as const).map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={portalTab === id} onClick={() => setPortalTab(id)}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${portalTab === id ? 'bg-clinic-green text-white' : 'bg-clinic-paper text-slate-600'}`}>{label}</button>
+              ))}
+            </div>
+            <div className="p-5 sm:p-7">
+            {portalTab === 'prescriptions' && <h2 className="flex items-center gap-2 text-lg font-bold text-clinic-ink"><CalendarDays size={20} className="text-clinic-green" /> Official Prescriptions &amp; Bills</h2>}
             {loading ? (
               <p className="flex items-center gap-2 py-10 text-sm text-slate-500"><LoaderCircle size={17} className="animate-spin" /> Loading visits…</p>
-            ) : visits.length === 0 ? (
+            ) : portalTab === 'prescriptions' && visits.length === 0 && visibleDocuments.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-500">No completed consultations are available yet.</p>
-            ) : (
+            ) : portalTab === 'prescriptions' ? (
               <div className="mt-4 space-y-3">
+                {visibleDocuments.map((document) => (
+                  <article key={document.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-100 p-4 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-3">
+                      {documentPreviews[document.id] ? <img src={documentPreviews[document.id]} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-xl bg-clinic-mint text-clinic-green">Rx</span>}
+                      <div><p className="font-semibold text-clinic-ink">{document.fileName}</p><p className="text-xs text-slate-500">{document.category.replaceAll('_', ' ')}</p></div>
+                    </div>
+                    <button onClick={() => void downloadDocument(document.id, document.fileName)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-clinic-mint px-4 text-sm font-semibold text-clinic-green"><Download size={15} />Download</button>
+                  </article>
+                ))}
                 {visits.map((visit) => (
                   <article key={visit.appointmentId} className="rounded-2xl border border-slate-100 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-clinic-green">
@@ -167,7 +253,19 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
                   </article>
                 ))}
               </div>
+            ) : visibleDocuments.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-500">No documents in this category yet.</p>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {visibleDocuments.map((document) => (
+                  <article key={document.id} className="overflow-hidden rounded-2xl border border-slate-100">
+                    {documentPreviews[document.id] ? <img src={documentPreviews[document.id]} alt={`Preview of ${document.fileName}`} className="h-40 w-full bg-clinic-paper object-contain" /> : <div className="grid h-32 place-items-center bg-clinic-paper text-sm font-semibold text-clinic-green">{document.contentType === 'application/pdf' ? 'PDF document' : document.category.replaceAll('_', ' ')}</div>}
+                    <div className="flex items-center justify-between gap-3 p-3"><p className="truncate text-sm font-semibold text-clinic-ink">{document.fileName}</p><button aria-label={`Download ${document.fileName}`} onClick={() => void downloadDocument(document.id, document.fileName)} className="rounded-lg bg-clinic-mint p-2 text-clinic-green"><Download size={16} /></button></div>
+                  </article>
+                ))}
+              </div>
             )}
+            </div>
           </section>
           {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
           <button onClick={() => onNavigate('patient')} className="mt-5 min-h-12 w-full rounded-xl bg-clinic-green px-4 font-semibold text-white sm:w-auto">Book follow-up appointment</button>

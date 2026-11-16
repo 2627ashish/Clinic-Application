@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
-import { ClipboardPlus, X } from 'lucide-react';
-import { completeVisit } from '../api/client';
-import type { AppointmentView, BillItem, ConsultationCompleteRequest, PrescriptionItem } from '../types';
+import { ChevronLeft, ChevronRight, ClipboardPlus, Paperclip, PencilLine, X } from 'lucide-react';
+import { completeVisit, getPatientVisitHistory, uploadAppointmentDocument } from '../api/client';
+import type { AppointmentView, BillItem, ConsultationCompleteRequest, PatientDocumentCategory, PrescriptionItem, TreatmentAndBill } from '../types';
 import AftercareEditor from './consultation/AftercareEditor';
 import BillEditor from './consultation/BillEditor';
+import DigitalApplePencilPad from './consultation/DigitalApplePencilPad';
 import MedicineEditor from './consultation/MedicineEditor';
 
 interface ConsultationModalProps {
@@ -44,6 +45,27 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
   const [paidAmount, setPaidAmount] = useState('0');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [prescriptionMode, setPrescriptionMode] = useState<'typed' | 'handwritten'>('typed');
+  const [showHandwrittenPad, setShowHandwrittenPad] = useState(false);
+  const [visitHistory, setVisitHistory] = useState<TreatmentAndBill[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [historyError, setHistoryError] = useState('');
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentCategory, setDocumentCategory] = useState<Exclude<PatientDocumentCategory, 'HANDWRITTEN_RX'>>('XRAY_RVG');
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentNotice, setDocumentNotice] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void getPatientVisitHistory(appointment.id)
+      .then((history) => {
+        if (active) setVisitHistory(history);
+      })
+      .catch(() => {
+        if (active) setHistoryError('Previous visits could not be loaded.');
+      });
+    return () => { active = false; };
+  }, [appointment.id]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,14 +77,14 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
       setError('Enter a description and a valid non-negative cost for every bill item.');
       return;
     }
-    if (hasIncompleteMedicine(medicines)) {
+    if (prescriptionMode === 'typed' && hasIncompleteMedicine(medicines)) {
       setError('Complete every medicine row or remove it. Name, dosage, duration, and instructions are required.');
       return;
     }
     const request: ConsultationCompleteRequest = {
       symptomsAndDiagnosis: diagnosis,
       procedurePerformed: procedure,
-      medicines,
+      medicines: prescriptionMode === 'typed' ? medicines : [],
       aftercareGuidelines: aftercare,
       billItems,
       paidAmount: Number(paidAmount),
@@ -88,6 +110,24 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
     }
   }
 
+  async function uploadDocument() {
+    if (!documentFile) return;
+    setUploadingDocument(true);
+    setDocumentNotice('');
+    setError('');
+    try {
+      await uploadAppointmentDocument(appointment.id, documentFile, documentCategory);
+      setDocumentNotice(`${documentFile.name} uploaded.`);
+      setDocumentFile(null);
+    } catch (uploadError: unknown) {
+      setError(getSaveError(uploadError));
+    } finally {
+      setUploadingDocument(false);
+    }
+  }
+
+  const currentHistory = visitHistory[historyIndex];
+
   return (
     <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-clinic-ink/45 p-4">
       <section role="dialog" aria-modal="true" aria-labelledby="consultation-title" className="my-auto w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
@@ -101,6 +141,25 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
           </div>
           <button aria-label="Close dialog" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100"><X size={19} /></button>
         </div>
+        {visitHistory.length > 0 && (
+          <section className="mt-5 rounded-2xl border border-slate-100 bg-clinic-paper p-4" aria-label="Previous prescription pages">
+            <div className="flex items-center justify-between gap-3">
+              <div><p className="text-xs font-bold uppercase tracking-wide text-clinic-green">Patient visit folder</p><p className="mt-1 text-sm font-semibold text-clinic-ink">Visit {visitHistory.length - historyIndex} of {visitHistory.length}</p></div>
+              <div className="flex gap-2">
+                <button type="button" aria-label="Newer visit" disabled={historyIndex === 0} onClick={() => setHistoryIndex((index) => Math.max(index - 1, 0))} className="rounded-lg border border-slate-200 bg-white p-2 disabled:opacity-40"><ChevronLeft size={17} /></button>
+                <button type="button" aria-label="Older visit" disabled={historyIndex === visitHistory.length - 1} onClick={() => setHistoryIndex((index) => Math.min(index + 1, visitHistory.length - 1))} className="rounded-lg border border-slate-200 bg-white p-2 disabled:opacity-40"><ChevronRight size={17} /></button>
+              </div>
+            </div>
+            {currentHistory && <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><p><strong>Date:</strong> {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(currentHistory.createdAt))}</p><p><strong>Diagnosis:</strong> {currentHistory.symptomsAndDiagnosis}</p><p className="sm:col-span-2"><strong>Procedure:</strong> {currentHistory.procedurePerformed}</p></div>}
+          </section>
+        )}
+        {historyError && <p role="status" className="mt-3 text-xs text-amber-700">{historyError}</p>}
+        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Prescription entry mode">
+          <button type="button" role="tab" aria-selected={prescriptionMode === 'typed'} onClick={() => setPrescriptionMode('typed')}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'typed' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>⌨️ Type Prescription</button>
+          <button type="button" role="tab" aria-selected={prescriptionMode === 'handwritten'} onClick={() => setPrescriptionMode('handwritten')}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'handwritten' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>✏️ Apple Pencil Handwritten Pad</button>
+        </div>
         <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-semibold text-clinic-ink">
             Symptoms &amp; diagnosis
@@ -110,7 +169,11 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
             Procedure performed
             <textarea required rows={3} value={procedure} onChange={(event) => setProcedure(event.target.value)} className={fieldClass} placeholder="Treatment provided today" />
           </label>
-          <MedicineEditor medicines={medicines} onChange={setMedicines} />
+          {prescriptionMode === 'typed' ? <MedicineEditor medicines={medicines} onChange={setMedicines} /> : (
+            <button type="button" onClick={() => setShowHandwrittenPad(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-dashed border-clinic-green bg-clinic-mint px-4 font-semibold text-clinic-green sm:col-span-2">
+              <PencilLine size={18} />Open Digital Prescription Pad
+            </button>
+          )}
           <AftercareEditor value={aftercare} onChange={setAftercare} />
           <BillEditor items={billItems} paidAmount={paidAmount} onItemsChange={setBillItems} onPaidAmountChange={setPaidAmount} />
           {error && <p role="alert" className="text-sm text-red-600 sm:col-span-2">{error}</p>}
@@ -118,7 +181,25 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
             {submitting ? 'Saving visit…' : 'Save visit & send summary'}
           </button>
         </form>
+        <section className="mt-5 rounded-2xl border border-slate-100 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h3 className="font-semibold text-clinic-ink">📎 Upload X-Ray / Docs</h3><p className="mt-1 text-xs text-slate-500">PDF, JPEG, PNG, or WebP · up to 8 MB</p></div>
+            <select aria-label="Document category" value={documentCategory} onChange={(event) => setDocumentCategory(event.target.value as Exclude<PatientDocumentCategory, 'HANDWRITTEN_RX'>)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="XRAY_RVG">X-Ray / RVG</option><option value="EXTERNAL_PRESCRIPTION">External Prescription</option><option value="LAB_REPORT">Lab Report</option><option value="OTHER">Other</option>
+            </select>
+          </div>
+          <label onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setDocumentFile(event.dataTransfer.files[0] ?? null); }}
+            className="mt-3 flex min-h-20 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-clinic-paper px-4 text-center text-sm text-slate-600">
+            <Paperclip size={17} />{documentFile ? documentFile.name : 'Drop a file here or choose a document'}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="sr-only" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            {documentNotice && <p role="status" className="text-xs font-medium text-emerald-700">{documentNotice}</p>}
+            <button type="button" disabled={!documentFile || uploadingDocument} onClick={() => void uploadDocument()} className="ml-auto min-h-10 rounded-lg bg-clinic-green px-4 text-sm font-semibold text-white disabled:opacity-50">{uploadingDocument ? 'Uploading…' : 'Upload document'}</button>
+          </div>
+        </section>
       </section>
+      {showHandwrittenPad && <DigitalApplePencilPad appointmentId={appointment.id} patientName={appointment.patientName} onClose={() => setShowHandwrittenPad(false)} onSaved={() => setDocumentNotice('Handwritten prescription saved to the patient visit timeline.')} />}
     </div>
   );
 }

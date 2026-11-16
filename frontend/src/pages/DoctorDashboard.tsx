@@ -4,6 +4,7 @@ import { getAppointments, updateAppointmentStatus } from '../api/client';
 import BroadcastCard from '../components/BroadcastCard';
 import ConsultationModal from '../components/ConsultationModal';
 import RescheduleModal from '../components/RescheduleModal';
+import WalkInIntakeCard from '../components/WalkInIntakeCard';
 import type { AppointmentStatus, AppointmentView } from '../types';
 import { clinicDetails } from '../utils/clinic';
 import type { ConsultationType } from '../types/appointment';
@@ -39,7 +40,7 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
   const [selected, setSelected] = useState<AppointmentView | null>(null);
   const [modal, setModal] = useState<'reschedule' | 'consultation' | null>(null);
   const [updatingId, setUpdatingId] = useState('');
-  const [appointmentTab, setAppointmentTab] = useState<ConsultationType>('IN_CLINIC');
+  const [appointmentTab, setAppointmentTab] = useState<ConsultationType | 'WALK_IN'>('IN_CLINIC');
   const pendingCount = useMemo(() => appointments.filter((item) => item.status === 'PENDING_DOCTOR_APPROVAL').length, [appointments]);
   const confirmedCount = useMemo(() => appointments.filter((item) => item.status === 'CONFIRMED' || item.status === 'RESCHEDULED').length, [appointments]);
 
@@ -100,6 +101,23 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
     await refresh();
   }
 
+  async function openWalkInConsultation(appointmentId: string) {
+    setError('');
+    try {
+      const results = await getAppointments();
+      const appointment = results.find((item) => item.id === appointmentId);
+      setAppointments(results.sort((left, right) => left.appointmentTime.localeCompare(right.appointmentTime)));
+      if (!appointment) {
+        setError('Walk-in record was created, but its appointment details could not be loaded.');
+        return;
+      }
+      setSelected(appointment);
+      setModal('consultation');
+    } catch {
+      setError('The walk-in record was created, but appointments could not be refreshed.');
+    }
+  }
+
   const activeAppointments = appointments.filter((item) =>
     item.status === 'PENDING_DOCTOR_APPROVAL' || item.status === 'CONFIRMED' || item.status === 'RESCHEDULED',
   );
@@ -140,12 +158,13 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
       <section className="mt-8 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-6">
           <div><h2 className="text-lg font-bold text-clinic-ink">Appointment requests</h2><p className="mt-1 text-sm text-slate-500">Review and manage the upcoming care schedule</p></div>
-          <span className="rounded-full bg-clinic-paper px-3 py-1 text-xs font-semibold text-slate-600">{tabAppointments.length} active</span>
+          <span className="rounded-full bg-clinic-paper px-3 py-1 text-xs font-semibold text-slate-600">{appointmentTab === 'WALK_IN' ? appointments.filter((item) => item.intakeSource && new Date(item.appointmentTime).toDateString() === new Date().toDateString()).length : tabAppointments.length} {appointmentTab === 'WALK_IN' ? 'today' : 'active'}</span>
         </div>
-        <div className="flex gap-2 border-b border-slate-100 px-5 py-3 sm:px-6" role="tablist" aria-label="Appointment type">
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3 sm:px-6" role="tablist" aria-label="Doctor intake">
           {([
             ['IN_CLINIC', '🏥 In-Clinic Appointments'],
             ['ONLINE', '💻 Online Consultations'],
+            ['WALK_IN', 'Walk-In & Phone Intake'],
           ] as const).map(([type, label]) => (
             <button key={type} type="button" role="tab" aria-selected={appointmentTab === type}
               onClick={() => setAppointmentTab(type)}
@@ -154,7 +173,9 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
             </button>
           ))}
         </div>
-        {loading ? (
+        {appointmentTab === 'WALK_IN' ? (
+          <WalkInIntakeCard appointments={appointments} onStartConsultation={(id) => void openWalkInConsultation(id)} />
+        ) : loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} /> Loading appointments…</div>
         ) : tabAppointments.length === 0 ? (
           <div className="px-6 py-16 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-clinic-paper text-clinic-green"><Stethoscope size={22} /></span><p className="mt-4 font-semibold text-clinic-ink">All caught up</p><p className="mt-1 text-sm text-slate-500">New {appointmentTab === 'ONLINE' ? 'online consultation' : 'in-clinic appointment'} requests will show up here.</p></div>
@@ -165,7 +186,13 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
               <tbody className="divide-y divide-slate-100">
                 {tabAppointments.map((appointment) => (
                   <tr key={appointment.id} className="align-top hover:bg-clinic-paper/40">
-                    <td className="px-6 py-4"><p className="font-semibold text-clinic-ink">{appointment.patientName}</p><p className="mt-1 text-xs text-slate-500">{appointment.phoneNumber}</p><p className="mt-2 max-w-xs text-sm text-slate-600">{appointment.chiefComplaintSummary}</p></td>
+                    <td className="px-6 py-4"><p className="font-semibold text-clinic-ink">{appointment.patientName}</p><p className="mt-1 text-xs text-slate-500">{appointment.phoneNumber}</p><p className="mt-2 max-w-xs text-sm text-slate-600">{appointment.chiefComplaintSummary}</p>
+                      {((appointment.medicalHistory?.length ?? 0) > 0 || appointment.isPregnant || appointment.ongoingTreatments) && (
+                        <p className="mt-2 max-w-xs text-xs font-bold text-red-700">
+                          MEDICAL ALERT: {[...(appointment.medicalHistory ?? []), ...(appointment.isPregnant ? ['Pregnant / breastfeeding'] : []), ...(appointment.ongoingTreatments ? [`Treatment: ${appointment.ongoingTreatments}`] : [])].join(' · ')}
+                        </p>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">
                       <p>{formatAppointmentTime(appointment.appointmentTime)}</p>
                       {appointmentTab === 'ONLINE'

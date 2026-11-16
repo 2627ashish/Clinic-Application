@@ -12,6 +12,9 @@ export interface AiIntakePayload {
   symptomsDescription: string;
   consultationType: ConsultationType;
   whatsappMarketingOptIn: boolean;
+  medicalHistory: string[];
+  ongoingTreatments: string;
+  isPregnant: boolean | null;
 }
 
 export interface AppointmentResponse {

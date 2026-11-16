@@ -21,6 +21,8 @@ class OpenPdfGenerationServiceImplTest {
                 .phoneNumber("919810764715")
                 .age(32)
                 .gender("Male")
+                .medicalHistory(List.of("Diabetes / Sugar", "Blood Thinners"))
+                .ongoingTreatments("Cardiac follow-up")
                 .build();
         TreatmentAndBill visit = TreatmentAndBill.builder()
                 .symptomsAndDiagnosis("Tooth pain")
@@ -40,7 +42,8 @@ class OpenPdfGenerationServiceImplTest {
         String text = new PdfTextExtractor(reader).getTextFromPage(1);
         assertThat(text).contains("CHAUHAN DENTAL CLINIC", "DR. B.S. CHAUHAN", "डॉ. बी. एस. चौहान", "A-5651",
                 "Age/Sex: 32/M", "Root Canal Treatment", "Amoxicillin", "5 days", "Gali No. 3, Chhalera",
-                "Madhuban Apartments", "Clinic 1 map directions", "Clinic 2 map directions", "केवल नरम आहार लें");
+                "Madhuban Apartments", "Clinic 1 map directions", "Clinic 2 map directions", "केवल नरम आहार लें",
+                "MEDICAL ALERTS:", "Diabetes / Sugar", "Cardiac follow-up");
         reader.close();
     }
 }

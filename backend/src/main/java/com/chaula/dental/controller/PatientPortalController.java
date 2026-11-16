@@ -7,6 +7,9 @@ import com.chaula.dental.dto.PatientOtpResponse;
 import com.chaula.dental.dto.PatientOtpVerifyRequest;
 import com.chaula.dental.dto.PatientPortalSessionResponse;
 import com.chaula.dental.dto.PatientVisitSummary;
+import com.chaula.dental.dto.PatientDocumentView;
+import com.chaula.dental.domain.PatientDocument;
+import com.chaula.dental.service.PatientDocumentService;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.service.PatientPortalService;
 import com.chaula.dental.service.PdfGenerationService;
@@ -32,6 +35,7 @@ public class PatientPortalController {
     private final PatientPortalService portalService;
     private final PatientRepository patientRepository;
     private final PdfGenerationService pdfService;
+    private final PatientDocumentService documentService;
 
     @PostMapping("/otp")
     public PatientOtpResponse sendOtp(@Valid @RequestBody PatientOtpRequest request) {
@@ -62,6 +66,28 @@ public class PatientPortalController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"visit-summary.pdf\"")
                 .body(pdfService.generateVisitSummaryPdf(patient, visit));
+    }
+
+    @GetMapping("/documents")
+    public List<PatientDocumentView> documents(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization
+    ) {
+        return documentService.listForPatient(portalService.patientId(bearerToken(authorization)));
+    }
+
+    @GetMapping("/documents/{documentId}/download")
+    public ResponseEntity<byte[]> downloadDocument(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @PathVariable String documentId
+    ) {
+        PatientDocument document = documentService.findForPatient(
+                documentId, portalService.patientId(bearerToken(authorization)));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(document.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + document.getFileName().replace("\"", "") + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(document.getContent());
     }
 
     private String bearerToken(String authorization) {

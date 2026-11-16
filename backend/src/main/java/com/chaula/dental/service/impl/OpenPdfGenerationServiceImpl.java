@@ -58,6 +58,7 @@ public class OpenPdfGenerationServiceImpl implements PdfGenerationService {
             Font small = font(7, Font.NORMAL, Color.DARK_GRAY);
             addHeader(document);
             addPatientDetails(document, patient, regular);
+            addMedicalAlerts(document, patient);
             addClinicalLayout(document, treatment, regular, small);
             addFooter(document, small);
             document.close();
@@ -67,6 +68,28 @@ public class OpenPdfGenerationServiceImpl implements PdfGenerationService {
         } finally {
             if (document.isOpen()) document.close();
         }
+    }
+
+    private void addMedicalAlerts(Document document, Patient patient) throws DocumentException {
+        List<String> alerts = safeList(patient.getMedicalHistory()).stream()
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+        if (Boolean.TRUE.equals(patient.getIsPregnant())) {
+            alerts = new java.util.ArrayList<>(alerts);
+            alerts.add("Pregnant or breastfeeding");
+        }
+        if (alerts.isEmpty() && (patient.getOngoingTreatments() == null || patient.getOngoingTreatments().isBlank())) {
+            return;
+        }
+        Font alertFont = font(9, Font.BOLD, new Color(180, 25, 25));
+        Paragraph alert = new Paragraph();
+        alert.add(new Phrase("MEDICAL ALERTS: ", alertFont));
+        alert.add(new Phrase(String.join(" · ", alerts), alertFont));
+        if (patient.getOngoingTreatments() != null && !patient.getOngoingTreatments().isBlank()) {
+            alert.add(new Phrase(" · Ongoing treatment: " + patient.getOngoingTreatments(), alertFont));
+        }
+        alert.setSpacingAfter(8);
+        document.add(alert);
     }
 
     private void addHeader(Document document) throws DocumentException {
