@@ -6,6 +6,7 @@ import com.chaula.dental.dto.PatientOtpRequest;
 import com.chaula.dental.dto.PatientOtpResponse;
 import com.chaula.dental.dto.PatientOtpVerifyRequest;
 import com.chaula.dental.dto.PatientPortalSessionResponse;
+import com.chaula.dental.dto.PatientProfileView;
 import com.chaula.dental.dto.PatientVisitSummary;
 import com.chaula.dental.dto.PatientDocumentView;
 import com.chaula.dental.domain.PatientDocument;
@@ -50,6 +51,11 @@ public class PatientPortalController {
     @GetMapping("/visits")
     public List<PatientVisitSummary> visits(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         return portalService.visits(bearerToken(authorization));
+    }
+
+    @GetMapping("/profile")
+    public PatientProfileView profile(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+        return portalService.profile(bearerToken(authorization));
     }
 
     @GetMapping("/visits/{appointmentId}/pdf")

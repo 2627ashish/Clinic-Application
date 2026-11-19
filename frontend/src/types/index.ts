@@ -37,6 +37,7 @@ export interface Appointment {
 export interface AppointmentView extends Appointment {
   patientName: string;
   phoneNumber: string;
+  patientAge: number | null;
 }
 
 export interface PrescriptionItem {
@@ -77,6 +78,7 @@ export interface ConsultationCompleteRequest {
   aftercareGuidelines: string;
   billItems: BillItem[];
   paidAmount: number;
+  handwrittenPrescriptionDocumentId?: string | null;
 }
 
 export type PatientDocumentCategory =

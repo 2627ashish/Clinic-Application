@@ -7,6 +7,7 @@ import type {
   TreatmentAndBill,
   PatientDocumentView,
   PatientDocumentCategory,
+  PrescriptionItem,
   WalkInRequest,
   ClinicConfig,
 } from '../types';
@@ -74,6 +75,15 @@ export interface PatientVisitSummary {
   visitDate: string;
   diagnosis: string;
   procedurePerformed: string;
+  medicines: PrescriptionItem[];
+  aftercareGuidelines: string | null;
+}
+
+export interface PatientProfileView {
+  fullName: string;
+  phoneNumber: string;
+  age: number | null;
+  gender: string | null;
 }
 
 export interface PatientPortalSession {
@@ -97,6 +107,13 @@ export async function requestPatientOtp(phoneNumber: string): Promise<PatientOtp
 
 export async function verifyPatientOtp(phoneNumber: string, code: string): Promise<PatientPortalSession> {
   const response = await client.post<PatientPortalSession>('/patient-portal/verify', { phoneNumber, code });
+  return response.data;
+}
+
+export async function getPatientProfile(token: string): Promise<PatientProfileView> {
+  const response = await client.get<PatientProfileView>('/patient-portal/profile', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return response.data;
 }
 

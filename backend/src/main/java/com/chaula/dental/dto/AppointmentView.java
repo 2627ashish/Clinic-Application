@@ -14,6 +14,7 @@ public record AppointmentView(
         String patientId,
         String patientName,
         String phoneNumber,
+        Integer patientAge,
         LocalDateTime appointmentTime,
         ClinicLocation clinicLocation,
         ConsultationType consultationType,
@@ -27,12 +28,13 @@ public record AppointmentView(
         String intakeSource,
         BigDecimal quotedFee
 ) {
-    public static AppointmentView from(Appointment appointment, String patientName, String phoneNumber) {
+    public static AppointmentView from(Appointment appointment, String patientName, String phoneNumber, Integer patientAge) {
         return new AppointmentView(
                 appointment.getId(),
                 appointment.getPatientId(),
                 patientName,
                 phoneNumber,
+                patientAge,
                 appointment.getAppointmentTime(),
                 ClinicLocation.defaultLocation(appointment.getClinicLocation()),
                 appointment.getConsultationType() == null

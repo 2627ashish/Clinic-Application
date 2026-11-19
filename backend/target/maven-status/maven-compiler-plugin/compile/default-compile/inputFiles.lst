@@ -37,6 +37,7 @@
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/PatientOtpResponse.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/PatientOtpVerifyRequest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/PatientPortalSessionResponse.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/PatientProfileView.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/PatientVisitSummary.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/dto/WalkInRequest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/main/java/com/chaula/dental/messaging/event/WhatsAppDocumentMessage.java

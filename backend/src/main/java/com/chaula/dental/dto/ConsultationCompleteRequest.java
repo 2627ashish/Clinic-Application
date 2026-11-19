@@ -20,6 +20,7 @@ public record ConsultationCompleteRequest(
         @NotBlank
         String aftercareGuidelines,
         @NotEmpty List<@Valid BillItem> billItems,
-        @NotNull @PositiveOrZero BigDecimal paidAmount
+        @NotNull @PositiveOrZero BigDecimal paidAmount,
+        String handwrittenPrescriptionDocumentId
 ) {
 }

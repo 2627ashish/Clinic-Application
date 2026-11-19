@@ -4,6 +4,7 @@ import com.chaula.dental.domain.Patient;
 import com.chaula.dental.domain.TreatmentAndBill;
 import com.chaula.dental.dto.PatientOtpResponse;
 import com.chaula.dental.dto.PatientPortalSessionResponse;
+import com.chaula.dental.dto.PatientProfileView;
 import com.chaula.dental.dto.PatientVisitSummary;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
@@ -102,6 +103,16 @@ public class PatientPortalService {
                 .toList();
     }
 
+    public PatientProfileView profile(String token) {
+        Patient patient = authenticatedPatient(token);
+        return new PatientProfileView(
+                patient.getFullName(),
+                patient.getPhoneNumber(),
+                patient.getAge(),
+                patient.getGender()
+        );
+    }
+
     public String patientId(String token) {
         return authenticatedPatient(token).getId();
     }
@@ -131,7 +142,9 @@ public class PatientPortalService {
                 visit.getAppointmentId(),
                 visit.getCreatedAt(),
                 visit.getSymptomsAndDiagnosis(),
-                visit.getProcedurePerformed()
+                visit.getProcedurePerformed(),
+                visit.getMedicines() == null ? List.of() : visit.getMedicines(),
+                visit.getAftercareGuidelines()
         );
     }
 

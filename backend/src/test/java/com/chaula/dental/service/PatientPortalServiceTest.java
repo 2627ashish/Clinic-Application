@@ -60,6 +60,29 @@ class PatientPortalServiceTest {
                 ".*8[^0-9]*2[^0-9]*7[^0-9]*3[^0-9]*1[^0-9]*6[^0-9]*1[^0-9]*3[^0-9]*3[^0-9]*8[^0-9]*$");
     }
 
+    @Test
+    void returnsAuthenticatedPatientProfileDetails() {
+        Patient patient = Patient.builder()
+                .id("patient-1")
+                .fullName("ashish")
+                .phoneNumber("8273161338")
+                .age(34)
+                .gender("Male")
+                .build();
+        when(patients.findByPhoneNumber("918273161338")).thenReturn(Optional.empty());
+        when(patients.findFirstByPhoneNumberEndingWith("8273161338")).thenReturn(Optional.of(patient));
+        when(patients.findById("patient-1")).thenReturn(Optional.of(patient));
+
+        String code = service.sendOtp("8273161338").demoCode();
+        String token = service.verifyOtp("8273161338", code).token();
+
+        var profile = service.profile(token);
+        assertThat(profile.fullName()).isEqualTo("ashish");
+        assertThat(profile.phoneNumber()).isEqualTo("8273161338");
+        assertThat(profile.age()).isEqualTo(34);
+        assertThat(profile.gender()).isEqualTo("Male");
+    }
+
     private Patient patient() {
         return Patient.builder().id("patient-1").fullName("ashish").phoneNumber("8273161338").build();
     }

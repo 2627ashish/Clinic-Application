@@ -5,12 +5,15 @@ import com.chaula.dental.domain.AppointmentStatus;
 import com.chaula.dental.domain.ClinicLocation;
 import com.chaula.dental.domain.ConsultationType;
 import com.chaula.dental.domain.Patient;
+import com.chaula.dental.domain.PatientDocument;
+import com.chaula.dental.domain.PatientDocumentCategory;
 import com.chaula.dental.domain.TreatmentAndBill;
 import com.chaula.dental.dto.AppointmentStatusUpdateRequest;
 import com.chaula.dental.dto.AppointmentView;
 import com.chaula.dental.dto.ConsultationCompleteRequest;
 import com.chaula.dental.dto.WalkInRequest;
 import com.chaula.dental.repository.AppointmentRepository;
+import com.chaula.dental.repository.PatientDocumentRepository;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,7 @@ import java.util.UUID;
 public class AppointmentService {
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
+    private final PatientDocumentRepository patientDocumentRepository;
     private final TreatmentAndBillRepository treatmentRepository;
     private final WhatsAppNotificationService whatsappService;
     private final PdfGenerationService pdfService;
@@ -39,7 +43,8 @@ public class AppointmentService {
                     Patient patient = patientRepository.findById(appointment.getPatientId())
                             .orElseThrow(() -> new ResponseStatusException(
                                     HttpStatus.NOT_FOUND, "Patient for appointment was not found"));
-                    return AppointmentView.from(appointment, patient.getFullName(), patient.getPhoneNumber());
+                    return AppointmentView.from(
+                            appointment, patient.getFullName(), patient.getPhoneNumber(), patient.getAge());
                 })
                 .toList();
     }
@@ -144,6 +149,17 @@ public class AppointmentService {
 
     public TreatmentAndBill completeVisit(String id, ConsultationCompleteRequest request) {
         Appointment appointment = findAppointment(id);
+        PatientDocument handwrittenPrescription = null;
+        String handwrittenDocumentId = request.handwrittenPrescriptionDocumentId();
+        if (handwrittenDocumentId != null && !handwrittenDocumentId.isBlank()) {
+            handwrittenPrescription = patientDocumentRepository
+                    .findByIdAndAppointmentIdAndCategory(
+                            handwrittenDocumentId, appointment.getId(), PatientDocumentCategory.HANDWRITTEN_RX)
+                    .filter(document -> "image/png".equalsIgnoreCase(document.getContentType())
+                            || "image/jpeg".equalsIgnoreCase(document.getContentType()))
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "The handwritten prescription is not available for this visit"));
+        }
         if (request.billItems() == null || request.billItems().isEmpty() || request.billItems().stream()
                 .anyMatch(item -> item == null || item.amount() == null || item.amount().signum() < 0)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -173,6 +189,15 @@ public class AppointmentService {
         byte[] pdf = pdfService.generateVisitSummaryPdf(patient, treatment);
         whatsappService.sendDocumentAsync(patient.getPhoneNumber(),
                 "visit-summary.pdf", pdf);
+        if (handwrittenPrescription != null) {
+            whatsappService.sendImageAsync(
+                    patient.getPhoneNumber(),
+                    "Your handwritten prescription from Dr. B.S. Chauhan.",
+                    handwrittenPrescription.getFileName(),
+                    handwrittenPrescription.getContentType(),
+                    handwrittenPrescription.getContent()
+            );
+        }
         return treatment;
     }
 

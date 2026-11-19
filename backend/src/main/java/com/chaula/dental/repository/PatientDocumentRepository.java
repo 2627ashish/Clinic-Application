@@ -1,6 +1,7 @@
 package com.chaula.dental.repository;
 
 import com.chaula.dental.domain.PatientDocument;
+import com.chaula.dental.domain.PatientDocumentCategory;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.List;
@@ -10,4 +11,10 @@ public interface PatientDocumentRepository extends MongoRepository<PatientDocume
     List<PatientDocument> findByPatientIdOrderByCreatedAtDesc(String patientId);
 
     Optional<PatientDocument> findByIdAndPatientId(String id, String patientId);
+
+    Optional<PatientDocument> findByIdAndAppointmentIdAndCategory(
+            String id,
+            String appointmentId,
+            PatientDocumentCategory category
+    );
 }

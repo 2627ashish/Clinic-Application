@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
-import { CalendarDays, Download, HeartPulse, LoaderCircle, LogOut } from 'lucide-react';
+import { CalendarDays, Download, Eye, HeartPulse, LoaderCircle, LogOut, X } from 'lucide-react';
 import {
   downloadPatientDocument,
   downloadPatientPrescription,
   getPatientDocuments,
+  getPatientProfile,
   getPatientVisits,
   requestPatientOtp,
   verifyPatientOtp,
@@ -24,9 +25,11 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
   const [demoCode, setDemoCode] = useState('');
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '');
   const [patientName, setPatientName] = useState(() => localStorage.getItem(NAME_KEY) ?? '');
+  const [patientProfile, setPatientProfile] = useState<Awaited<ReturnType<typeof getPatientProfile>> | null>(null);
   const [visits, setVisits] = useState<PatientVisitSummary[]>([]);
   const [documents, setDocuments] = useState<PatientDocumentView[]>([]);
   const [documentPreviews, setDocumentPreviews] = useState<Record<string, string>>({});
+  const [documentPreview, setDocumentPreview] = useState<{ fileName: string; contentType: string; url: string } | null>(null);
   const [portalTab, setPortalTab] = useState<'prescriptions' | 'xrays' | 'other'>('prescriptions');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -37,6 +40,15 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     if (!token) return;
     let active = true;
     setLoading(true);
+    void getPatientProfile(token)
+      .then((profile) => {
+        if (active) {
+          setPatientProfile(profile);
+          setPatientName(profile.fullName);
+          localStorage.setItem(NAME_KEY, profile.fullName);
+        }
+      })
+      .catch(() => { if (active) setError('Patient details could not be loaded. Please sign in again.'); });
     void getPatientVisits(token)
       .then((items) => { if (active) setVisits(items); })
       .catch(() => {
@@ -64,6 +76,11 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
   useEffect(() => () => {
     Object.values(documentPreviews).forEach((url) => URL.revokeObjectURL(url));
   }, [documentPreviews]);
+
+  useEffect(() => {
+    if (!documentPreview) return;
+    return () => URL.revokeObjectURL(documentPreview.url);
+  }, [documentPreview]);
 
   useEffect(() => {
     if (!token) return;
@@ -122,9 +139,11 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     localStorage.removeItem(NAME_KEY);
     setToken('');
     setPatientName('');
+    setPatientProfile(null);
     setVisits([]);
     setDocuments([]);
     setDocumentPreviews({});
+    setDocumentPreview(null);
     setDemoCode('');
     setCode('');
   }
@@ -156,6 +175,34 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       setError('The document could not be downloaded. Please try again.');
+    }
+  }
+
+  async function viewPrescription(appointmentId: string) {
+    setError('');
+    try {
+      const blob = await downloadPatientPrescription(token, appointmentId);
+      setDocumentPreview({
+        fileName: `prescription-${appointmentId}.pdf`,
+        contentType: 'application/pdf',
+        url: URL.createObjectURL(blob),
+      });
+    } catch {
+      setError('The prescription could not be opened. Please try again.');
+    }
+  }
+
+  async function viewDocument(document: PatientDocumentView) {
+    setError('');
+    try {
+      const blob = await downloadPatientDocument(token, document.id);
+      setDocumentPreview({
+        fileName: document.fileName,
+        contentType: document.contentType,
+        url: URL.createObjectURL(blob),
+      });
+    } catch {
+      setError('The document could not be opened. Please try again.');
     }
   }
 
@@ -206,7 +253,11 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
             <div>
               <p className="text-sm font-bold uppercase tracking-wider text-clinic-green">Patient portal</p>
               <h1 className="mt-2 text-2xl font-bold text-clinic-ink">Namaste, {patientName}!</h1>
-              <p className="mt-2 text-sm text-slate-500">How is your dental health today?</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {patientProfile
+                  ? `${patientProfile.phoneNumber} · Age: ${patientProfile.age == null ? 'Not recorded' : patientProfile.age} · Gender: ${patientProfile.gender || 'Not recorded'}`
+                  : 'Loading your details…'}
+              </p>
             </div>
             <button onClick={signOut} className="inline-flex min-h-11 items-center gap-2 self-start rounded-xl border border-slate-200 px-4 font-semibold text-slate-600 sm:self-auto"><LogOut size={16} /> Sign out</button>
           </header>
@@ -232,10 +283,15 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
                 {visibleDocuments.map((document) => (
                   <article key={document.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-100 p-4 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-3">
-                      {documentPreviews[document.id] ? <img src={documentPreviews[document.id]} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-xl bg-clinic-mint text-clinic-green">Rx</span>}
+                      {documentPreviews[document.id]
+                        ? <button type="button" onClick={() => void viewDocument(document)} aria-label={`View ${document.fileName}`}><img src={documentPreviews[document.id]} alt="" className="h-14 w-14 rounded-lg object-cover" /></button>
+                        : <span className="grid h-12 w-12 place-items-center rounded-xl bg-clinic-mint text-clinic-green">Rx</span>}
                       <div><p className="font-semibold text-clinic-ink">{document.fileName}</p><p className="text-xs text-slate-500">{document.category.replaceAll('_', ' ')}</p></div>
                     </div>
-                    <button onClick={() => void downloadDocument(document.id, document.fileName)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-clinic-mint px-4 text-sm font-semibold text-clinic-green"><Download size={15} />Download</button>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => void viewDocument(document)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-clinic-mint px-3 text-sm font-semibold text-clinic-green"><Eye size={15} />View</button>
+                      <button type="button" onClick={() => void downloadDocument(document.id, document.fileName)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"><Download size={15} />Download</button>
+                    </div>
                   </article>
                 ))}
                 {visits.map((visit) => (
@@ -245,11 +301,31 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
                     </p>
                     <p className="mt-2 text-sm text-clinic-ink"><strong>Diagnosis:</strong> {visit.diagnosis}</p>
                     <p className="mt-1 text-sm text-clinic-ink"><strong>Procedure:</strong> {visit.procedurePerformed}</p>
+                    {visit.medicines.length > 0 && (
+                      <div className="mt-3 rounded-xl bg-clinic-paper p-3">
+                        <p className="text-sm font-bold text-clinic-ink">Prescription</p>
+                        <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                          {visit.medicines.map((medicine, index) => (
+                            <li key={`${medicine.name}-${index}`}>
+                              <strong>{medicine.name}</strong> · {medicine.dosage} · {medicine.duration}
+                              <span className="block text-xs text-slate-500">{medicine.instructions}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {visit.aftercareGuidelines && <p className="mt-2 text-sm text-clinic-ink"><strong>Aftercare:</strong> {visit.aftercareGuidelines}</p>}
                     <p className="mt-1 text-xs text-slate-500">Dr. B.S. Chauhan</p>
-                    <button onClick={() => void download(visit.appointmentId)}
-                      className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-clinic-mint px-4 text-sm font-semibold text-clinic-green">
-                      <Download size={16} /> Download Prescription PDF
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void viewPrescription(visit.appointmentId)}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-clinic-mint px-4 text-sm font-semibold text-clinic-green">
+                        <Eye size={16} /> View Prescription PDF
+                      </button>
+                      <button type="button" onClick={() => void download(visit.appointmentId)}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">
+                        <Download size={16} /> Download PDF
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -259,8 +335,16 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {visibleDocuments.map((document) => (
                   <article key={document.id} className="overflow-hidden rounded-2xl border border-slate-100">
-                    {documentPreviews[document.id] ? <img src={documentPreviews[document.id]} alt={`Preview of ${document.fileName}`} className="h-40 w-full bg-clinic-paper object-contain" /> : <div className="grid h-32 place-items-center bg-clinic-paper text-sm font-semibold text-clinic-green">{document.contentType === 'application/pdf' ? 'PDF document' : document.category.replaceAll('_', ' ')}</div>}
-                    <div className="flex items-center justify-between gap-3 p-3"><p className="truncate text-sm font-semibold text-clinic-ink">{document.fileName}</p><button aria-label={`Download ${document.fileName}`} onClick={() => void downloadDocument(document.id, document.fileName)} className="rounded-lg bg-clinic-mint p-2 text-clinic-green"><Download size={16} /></button></div>
+                    <button type="button" onClick={() => void viewDocument(document)} className="block w-full">
+                      {documentPreviews[document.id] ? <img src={documentPreviews[document.id]} alt={`Preview of ${document.fileName}`} className="h-40 w-full bg-clinic-paper object-contain" /> : <div className="grid h-32 place-items-center bg-clinic-paper text-sm font-semibold text-clinic-green">{document.contentType === 'application/pdf' ? 'Open PDF' : document.category.replaceAll('_', ' ')}</div>}
+                    </button>
+                    <div className="flex items-center justify-between gap-3 p-3">
+                      <p className="truncate text-sm font-semibold text-clinic-ink">{document.fileName}</p>
+                      <div className="flex gap-2">
+                        <button aria-label={`View ${document.fileName}`} onClick={() => void viewDocument(document)} className="rounded-lg bg-clinic-mint p-2 text-clinic-green"><Eye size={16} /></button>
+                        <button aria-label={`Download ${document.fileName}`} onClick={() => void downloadDocument(document.id, document.fileName)} className="rounded-lg border border-slate-200 p-2 text-slate-700"><Download size={16} /></button>
+                      </div>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -270,6 +354,19 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
           {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
           <button onClick={() => onNavigate('patient')} className="mt-5 min-h-12 w-full rounded-xl bg-clinic-green px-4 font-semibold text-white sm:w-auto">Book follow-up appointment</button>
         </>
+      )}
+      {documentPreview && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={documentPreview.fileName}>
+          <section className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <h2 className="truncate font-semibold text-clinic-ink">{documentPreview.fileName}</h2>
+              <button type="button" aria-label="Close preview" onClick={() => setDocumentPreview(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+            </header>
+            {documentPreview.contentType === 'application/pdf'
+              ? <iframe title={documentPreview.fileName} src={documentPreview.url} className="min-h-[65vh] w-full flex-1" />
+              : <div className="grid min-h-[65vh] place-items-center overflow-auto bg-slate-100 p-3"><img src={documentPreview.url} alt={documentPreview.fileName} className="max-h-[70vh] max-w-full object-contain" /></div>}
+          </section>
+        </div>
       )}
     </main>
   );

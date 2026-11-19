@@ -59,6 +59,7 @@ com/chaula/dental/service/impl/KafkaWhatsAppNotificationService.class
 com/chaula/dental/service/DoctorAuthService$DoctorSession.class
 com/chaula/dental/messaging/event/WhatsAppLocationMessage.class
 com/chaula/dental/repository/PatientRepository.class
+com/chaula/dental/dto/PatientProfileView.class
 com/chaula/dental/messaging/event/WhatsAppInboundMessage.class
 com/chaula/dental/domain/Patient.class
 com/chaula/dental/dto/DoctorSetupStatus.class

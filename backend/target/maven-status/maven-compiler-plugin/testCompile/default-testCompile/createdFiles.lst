@@ -1,5 +1,6 @@
 com/chaula/dental/service/impl/OpenPdfGenerationServiceImplTest.class
 com/chaula/dental/service/AppointmentIntakeServiceImplTest.class
+com/chaula/dental/service/AppointmentServiceTest.class
 com/chaula/dental/service/PatientPortalServiceTest.class
 com/chaula/dental/service/DoctorAuthServiceTest.class
 com/chaula/dental/service/PhoneUtilsTest.class

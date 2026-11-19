@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import axios from 'axios';
 import { ChevronLeft, ChevronRight, ClipboardPlus, Paperclip, PencilLine, X } from 'lucide-react';
 import { completeVisit, getPatientVisitHistory, uploadAppointmentDocument } from '../api/client';
-import type { AppointmentView, BillItem, ConsultationCompleteRequest, PatientDocumentCategory, PrescriptionItem, TreatmentAndBill } from '../types';
+import type { AppointmentView, BillItem, ConsultationCompleteRequest, PatientDocumentCategory, PatientDocumentView, PrescriptionItem, TreatmentAndBill } from '../types';
 import AftercareEditor from './consultation/AftercareEditor';
 import BillEditor from './consultation/BillEditor';
 import DigitalApplePencilPad from './consultation/DigitalApplePencilPad';
@@ -47,6 +47,7 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
   const [submitting, setSubmitting] = useState(false);
   const [prescriptionMode, setPrescriptionMode] = useState<'typed' | 'handwritten'>('typed');
   const [showHandwrittenPad, setShowHandwrittenPad] = useState(false);
+  const [handwrittenPrescription, setHandwrittenPrescription] = useState<PatientDocumentView | null>(null);
   const [visitHistory, setVisitHistory] = useState<TreatmentAndBill[]>([]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [historyError, setHistoryError] = useState('');
@@ -81,6 +82,10 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
       setError('Complete every medicine row or remove it. Name, dosage, duration, and instructions are required.');
       return;
     }
+    if (prescriptionMode === 'handwritten' && !handwrittenPrescription) {
+      setError('Save the handwritten prescription before completing this visit.');
+      return;
+    }
     const request: ConsultationCompleteRequest = {
       symptomsAndDiagnosis: diagnosis,
       procedurePerformed: procedure,
@@ -88,6 +93,9 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
       aftercareGuidelines: aftercare,
       billItems,
       paidAmount: Number(paidAmount),
+      handwrittenPrescriptionDocumentId: prescriptionMode === 'handwritten'
+        ? handwrittenPrescription?.id ?? null
+        : null,
     };
     if (!Number.isFinite(request.paidAmount) || request.paidAmount < 0) {
       setError('Enter a valid amount paid.');
@@ -155,7 +163,7 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
         )}
         {historyError && <p role="status" className="mt-3 text-xs text-amber-700">{historyError}</p>}
         <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Prescription entry mode">
-          <button type="button" role="tab" aria-selected={prescriptionMode === 'typed'} onClick={() => setPrescriptionMode('typed')}
+          <button type="button" role="tab" aria-selected={prescriptionMode === 'typed'} onClick={() => { setPrescriptionMode('typed'); setHandwrittenPrescription(null); }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'typed' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>⌨️ Type Prescription</button>
           <button type="button" role="tab" aria-selected={prescriptionMode === 'handwritten'} onClick={() => setPrescriptionMode('handwritten')}
             className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'handwritten' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>✏️ Apple Pencil Handwritten Pad</button>
@@ -199,7 +207,16 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
           </div>
         </section>
       </section>
-      {showHandwrittenPad && <DigitalApplePencilPad appointmentId={appointment.id} patientName={appointment.patientName} onClose={() => setShowHandwrittenPad(false)} onSaved={() => setDocumentNotice('Handwritten prescription saved to the patient visit timeline.')} />}
+      {showHandwrittenPad && <DigitalApplePencilPad
+        appointmentId={appointment.id}
+        patientName={appointment.patientName}
+        patientAge={appointment.patientAge}
+        onClose={() => setShowHandwrittenPad(false)}
+        onSaved={(document) => {
+          setHandwrittenPrescription(document);
+          setDocumentNotice('Handwritten prescription saved to the patient visit timeline.');
+        }}
+      />}
     </div>
   );
 }
