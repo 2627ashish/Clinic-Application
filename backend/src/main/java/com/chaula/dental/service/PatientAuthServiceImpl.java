@@ -3,7 +3,6 @@ package com.chaula.dental.service;
 import com.chaula.dental.domain.PatientOtp;
 import com.chaula.dental.dto.AuthResponse;
 import com.chaula.dental.dto.OtpResponse;
-import com.chaula.dental.messaging.event.WhatsAppOutboundMessage;
 import com.chaula.dental.repository.PatientOtpRepository;
 import com.chaula.dental.util.PhoneUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,19 +25,19 @@ public class PatientAuthServiceImpl implements PatientAuthService {
 
     private final PatientOtpRepository otpRepository;
     private final PatientPortalService patientPortalService;
-    private final WhatsAppDirectMessageSender whatsAppSender;
+    private final WhatsAppMessagePublisher messagePublisher;
     private final SecureRandom secureRandom = new SecureRandom();
     private final boolean mockOtp;
 
     public PatientAuthServiceImpl(
             PatientOtpRepository otpRepository,
             PatientPortalService patientPortalService,
-            WhatsAppDirectMessageSender whatsAppSender,
+            WhatsAppMessagePublisher messagePublisher,
             @Value("${patient.portal.mock-otp:false}") boolean mockOtp
     ) {
         this.otpRepository = otpRepository;
         this.patientPortalService = patientPortalService;
-        this.whatsAppSender = whatsAppSender;
+        this.messagePublisher = messagePublisher;
         this.mockOtp = mockOtp;
     }
 
@@ -69,7 +68,7 @@ public class PatientAuthServiceImpl implements PatientAuthService {
                 + "Your login OTP is: *" + otpCode + "*\n"
                 + "Valid for 10 minutes.\n\n"
                 + "_If you did not request this, please ignore._";
-        whatsAppSender.send(WhatsAppOutboundMessage.text(phoneNumber, message));
+        messagePublisher.publishText(phoneNumber, message);
         return new OtpResponse(true, OTP_SENT_MESSAGE, RESEND_COOLDOWN_SECONDS, mockOtp ? otpCode : null);
     }
 

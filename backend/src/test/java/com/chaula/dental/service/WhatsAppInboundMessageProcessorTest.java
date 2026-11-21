@@ -17,18 +17,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class WhatsAppInboundConsumerTest {
+class WhatsAppInboundMessageProcessorTest {
     @Mock
     private PatientRepository patientRepository;
 
     @Mock
     private WhatsAppNotificationService whatsappService;
 
-    private WhatsAppInboundConsumer consumer;
+    private WhatsAppInboundMessageProcessor processor;
 
     @BeforeEach
     void setUp() {
-        consumer = new WhatsAppInboundConsumer(null, null, patientRepository, whatsappService);
+        processor = new WhatsAppInboundMessageProcessor(null, null, patientRepository, whatsappService);
     }
 
     @Test
@@ -37,7 +37,7 @@ class WhatsAppInboundConsumerTest {
         when(patientRepository.findByPhoneNumber("919876543210")).thenReturn(Optional.of(patient));
         when(patientRepository.save(any(Patient.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        consumer.consume(new WhatsAppInboundMessage("message-id", "919876543210", "STOP", ""));
+        processor.process(new WhatsAppInboundMessage("message-id", "919876543210", "STOP", ""));
 
         assertThat(patient.isWhatsappMarketingOptIn()).isFalse();
         verify(patientRepository).save(patient);
@@ -51,7 +51,7 @@ class WhatsAppInboundConsumerTest {
         when(patientRepository.findByPhoneNumber("919876543210")).thenReturn(Optional.of(patient));
         when(patientRepository.save(any(Patient.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        consumer.consume(new WhatsAppInboundMessage("message-id", "919876543210", "START", ""));
+        processor.process(new WhatsAppInboundMessage("message-id", "919876543210", "START", ""));
 
         assertThat(patient.isWhatsappMarketingOptIn()).isTrue();
         assertThat(patient.getWhatsappMarketingOptInAt()).isNotNull();

@@ -21,18 +21,14 @@ import java.util.List;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class WhatsAppWebhookService {
     private final ObjectMapper objectMapper;
-    private final WhatsAppInboundEventSender eventSender;
     private final WhatsAppInboundMessageHandler inboundMessageHandler;
-    private final WhatsAppDirectMessageSender directMessageSender;
+    private final WhatsAppMessagePublisher messagePublisher;
     private final ConcurrentHashMap<String, Instant> dispatchedFallbacks = new ConcurrentHashMap<>();
 
     @Value("${whatsapp.webhook.app-secret:}")
@@ -40,9 +36,6 @@ public class WhatsAppWebhookService {
 
     @Value("${whatsapp.webhook.signature-required:true}")
     private boolean signatureRequired;
-
-    @Value("${whatsapp.kafka.inbound-topic:whatsapp-inbound}")
-    private String inboundTopic;
 
     public String verifySubscription(String mode, String token, String challenge, String expectedToken) {
         if (!"subscribe".equals(mode) || challenge == null || !matches(expectedToken, token)) {
@@ -150,9 +143,9 @@ public class WhatsAppWebhookService {
             if (!failedMessageId.isBlank()
                     && dispatchedFallbacks.putIfAbsent(failedMessageId, now) != null) continue;
             try {
-                directMessageSender.send(WhatsAppOutboundMessage.template(
+                messagePublisher.publish(WhatsAppOutboundMessage.template(
                         recipientPhone, "", "hello_world", "en_US", List.of()));
-                log.warn("Patient {} is outside the 24-hr session window. Dispatched pre-approved template fallback.",
+                log.warn("Patient {} is outside the 24-hr session window. Queued pre-approved template fallback.",
                         recipientPhone);
             } catch (RuntimeException exception) {
                 if (!failedMessageId.isBlank()) dispatchedFallbacks.remove(failedMessageId, now);
@@ -161,7 +154,7 @@ public class WhatsAppWebhookService {
         }
     }
 
-    private void publishIncoming(JsonNode message) throws Exception {
+    private void publishIncoming(JsonNode message) {
         String phoneNumber = message.path("from").asText("");
         String messageId = message.path("id").asText("");
         String messageType = message.path("type").asText("");
@@ -175,22 +168,6 @@ public class WhatsAppWebhookService {
         if (phoneNumber.isBlank() || messageId.isBlank() || (text.isBlank() && replyId.isBlank())) return;
 
         WhatsAppInboundMessage event = new WhatsAppInboundMessage(messageId, phoneNumber, text, replyId);
-        try {
-            eventSender.send(inboundTopic, phoneNumber, event).get(6, TimeUnit.SECONDS);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            processInboundDirectly(event, exception);
-        } catch (ExecutionException | TimeoutException | RuntimeException exception) {
-            processInboundDirectly(event, exception);
-        }
-    }
-
-    private void processInboundDirectly(WhatsAppInboundMessage event, Exception kafkaException) {
-        String digits = event.phoneNumber().replaceAll("\\D", "");
-        String recipientSuffix = digits.substring(Math.max(0, digits.length() - 4));
-        log.warn("Kafka broker unavailable. Processing inbound WhatsApp message directly; "
-                        + "recipient ending in {}",
-                recipientSuffix, kafkaException);
         inboundMessageHandler.process(event);
     }
 

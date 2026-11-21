@@ -4,12 +4,11 @@ import com.chaula.dental.domain.ClinicLocation;
 import com.chaula.dental.service.WhatsAppMessagePublisher;
 import com.chaula.dental.service.WhatsAppNotificationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
-public class KafkaWhatsAppNotificationService implements WhatsAppNotificationService {
+public class DirectWhatsAppNotificationService implements WhatsAppNotificationService {
     private final WhatsAppMessagePublisher messagePublisher;
 
     @Override
@@ -25,7 +24,6 @@ public class KafkaWhatsAppNotificationService implements WhatsAppNotificationSer
     }
 
     @Override
-    @Async("whatsappExecutor")
     public void sendDocumentAsync(String phoneNumber, String fileName, byte[] document) {
         messagePublisher.publishDocument(
                 phoneNumber,

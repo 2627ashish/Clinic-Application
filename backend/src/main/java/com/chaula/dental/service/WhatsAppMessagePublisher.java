@@ -1,10 +1,13 @@
 package com.chaula.dental.service;
 
 import com.chaula.dental.messaging.event.WhatsAppListRow;
+import com.chaula.dental.messaging.event.WhatsAppOutboundMessage;
 
 import java.util.List;
 
 public interface WhatsAppMessagePublisher {
+    void publish(WhatsAppOutboundMessage message);
+
     void publishText(String phoneNumber, String text);
 
     void publishList(String phoneNumber, String text, String title, String button, List<WhatsAppListRow> rows);

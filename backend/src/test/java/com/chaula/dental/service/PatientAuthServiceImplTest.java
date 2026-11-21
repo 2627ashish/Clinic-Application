@@ -2,7 +2,6 @@ package com.chaula.dental.service;
 
 import com.chaula.dental.domain.Patient;
 import com.chaula.dental.domain.PatientOtp;
-import com.chaula.dental.messaging.event.WhatsAppOutboundMessage;
 import com.chaula.dental.repository.PatientOtpRepository;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
@@ -31,9 +30,9 @@ class PatientAuthServiceImplTest {
     private final PatientRepository patients = mock(PatientRepository.class);
     private final TreatmentAndBillRepository treatments = mock(TreatmentAndBillRepository.class);
     private final PatientPortalService patientPortalService = new PatientPortalService(patients, treatments);
-    private final WhatsAppDirectMessageSender whatsAppSender = mock(WhatsAppDirectMessageSender.class);
+    private final WhatsAppMessagePublisher messagePublisher = mock(WhatsAppMessagePublisher.class);
     private final PatientAuthServiceImpl service =
-            new PatientAuthServiceImpl(otpRepository, patientPortalService, whatsAppSender, true);
+            new PatientAuthServiceImpl(otpRepository, patientPortalService, messagePublisher, true);
 
     @Test
     void normalizesPhoneAndSendsOtpWithCooldownResponse() {
@@ -46,10 +45,9 @@ class PatientAuthServiceImplTest {
         assertThat(response.message()).isEqualTo("OTP sent to WhatsApp");
         assertThat(response.resendCooldown()).isEqualTo(30);
         assertThat(response.mockOtp()).matches("\\d{4}");
-        verify(whatsAppSender).send(argThat((WhatsAppOutboundMessage message) ->
-                message.phoneNumber().equals(NORMALIZED_PHONE)
-                        && message.text().contains("Your login OTP is: *" + response.mockOtp() + "*")
-                        && message.text().contains("Valid for 10 minutes.")));
+        verify(messagePublisher).publishText(org.mockito.ArgumentMatchers.eq(NORMALIZED_PHONE),
+                argThat(message -> message.contains("Your login OTP is: *" + response.mockOtp() + "*")
+                        && message.contains("Valid for 10 minutes.")));
     }
 
     @Test
@@ -63,7 +61,7 @@ class PatientAuthServiceImplTest {
                         .isEqualTo(HttpStatus.TOO_MANY_REQUESTS))
                 .hasMessageContaining("Please wait 30 seconds");
         verify(otpRepository, never()).save(any(PatientOtp.class));
-        verify(whatsAppSender, never()).send(any());
+        verify(messagePublisher, never()).publishText(any(), any());
     }
 
     @Test

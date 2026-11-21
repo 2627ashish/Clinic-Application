@@ -4,22 +4,20 @@ import com.chaula.dental.messaging.event.WhatsAppInboundMessage;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.util.PhoneUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.kafka.annotation.KafkaListener;
 
 @Component
 @RequiredArgsConstructor
-public class WhatsAppInboundConsumer implements WhatsAppInboundMessageHandler {
+public class WhatsAppInboundMessageProcessor implements WhatsAppInboundMessageHandler {
     private final WhatsAppSessionService sessionService;
     private final WhatsAppConversationService conversationService;
     private final PatientRepository patientRepository;
     private final WhatsAppNotificationService whatsappService;
 
-    @KafkaListener(
-            topics = "${whatsapp.kafka.inbound-topic:whatsapp-inbound}",
-            groupId = "${spring.kafka.consumer.group-id}"
-    )
-    public void consume(WhatsAppInboundMessage inbound) {
+    @Override
+    @Async("whatsappExecutor")
+    public void process(WhatsAppInboundMessage inbound) {
         String preferenceCommand = marketingPreferenceCommand(inbound);
         if (preferenceCommand != null) {
             updateMarketingPreference(inbound.phoneNumber(), preferenceCommand.equals("START"));
@@ -31,11 +29,6 @@ public class WhatsAppInboundConsumer implements WhatsAppInboundMessageHandler {
             return;
         }
         sessionService.handle(inbound);
-    }
-
-    @Override
-    public void process(WhatsAppInboundMessage message) {
-        consume(message);
     }
 
     private String marketingPreferenceCommand(WhatsAppInboundMessage inbound) {
