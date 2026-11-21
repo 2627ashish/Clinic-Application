@@ -1,5 +1,4 @@
 import { ArrowRight, Calendar, Clock3, ExternalLink, MapPin, MessageCircle, Star } from 'lucide-react';
-import ClinicLogo from '../ClinicLogo';
 import { DENTAL_IMAGES } from '../../constants/dentalImages';
 import { justDialProfileUrl } from '../../utils/clinic';
 import PostCareCarousel from './PostCareCarousel';
