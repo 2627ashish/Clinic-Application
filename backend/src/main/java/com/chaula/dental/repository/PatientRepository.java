@@ -9,9 +9,15 @@ import java.util.List;
 public interface PatientRepository extends MongoRepository<Patient, String> {
     Optional<Patient> findByPhoneNumber(String phone);
 
+    List<Patient> findAllByPhoneNumber(String phone);
+
     Optional<Patient> findFirstByPhoneNumberEndingWith(String phoneSuffix);
 
     Optional<Patient> findFirstByPhoneNumberRegex(String phoneRegex);
+
+    List<Patient> findByPhoneNumberEndingWith(String phoneSuffix);
+
+    List<Patient> findByPhoneNumberRegex(String phoneRegex);
 
     List<Patient> findByWhatsappMarketingOptInTrue();
 

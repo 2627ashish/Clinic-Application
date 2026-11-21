@@ -1,32 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Check, Clock3, LoaderCircle, MessageCircle, RefreshCw, Stethoscope, Users, Video, XCircle } from 'lucide-react';
-import { getAppointments, updateAppointmentStatus } from '../api/client';
+import { CalendarDays, Clock3, LoaderCircle, RefreshCw, Stethoscope, Users } from 'lucide-react';
+import { deleteAppointment, getAppointments, updateAppointmentStatus } from '../api/client';
 import BroadcastCard from '../components/BroadcastCard';
 import ConsultationModal from '../components/ConsultationModal';
 import RescheduleModal from '../components/RescheduleModal';
 import WalkInIntakeCard from '../components/WalkInIntakeCard';
-import type { AppointmentStatus, AppointmentView } from '../types';
-import { clinicDetails } from '../utils/clinic';
+import AppointmentList from '../components/doctor/AppointmentList';
+import MobileAppointmentDrawer from '../components/doctor/MobileAppointmentDrawer';
+import type { AppointmentView } from '../types';
 import type { ConsultationType } from '../types/appointment';
 
-const statusStyles: Record<AppointmentStatus, string> = {
-  PENDING_DOCTOR_APPROVAL: 'bg-amber-50 text-amber-700',
-  CONFIRMED: 'bg-emerald-50 text-emerald-700',
-  RESCHEDULED: 'bg-sky-50 text-sky-700',
-  COMPLETED: 'bg-slate-100 text-slate-600',
-  CANCELLED: 'bg-rose-50 text-rose-700',
-};
-
-function formatAppointmentTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-}
-
-function whatsappCallUrl(phoneNumber: string, patientName: string): string | null {
-  const phone = phoneNumber.replace(/\D/g, '');
-  if (!phone) return null;
-  const message = `Hello ${patientName}, Dr. B.S. Chauhan is ready for your scheduled online consultation.`;
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-}
+const PAGE_SIZE = 10;
+const ACTIVE_STATUSES = 'PENDING_DOCTOR_APPROVAL,CONFIRMED,RESCHEDULED';
 
 interface DoctorDashboardProps {
   onOpenSettings: () => void;
@@ -41,20 +26,33 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
   const [modal, setModal] = useState<'reschedule' | 'consultation' | null>(null);
   const [updatingId, setUpdatingId] = useState('');
   const [appointmentTab, setAppointmentTab] = useState<ConsultationType | 'WALK_IN'>('IN_CLINIC');
+  const [mobileSelected, setMobileSelected] = useState<AppointmentView | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
   const pendingCount = useMemo(() => appointments.filter((item) => item.status === 'PENDING_DOCTOR_APPROVAL').length, [appointments]);
   const confirmedCount = useMemo(() => appointments.filter((item) => item.status === 'CONFIRMED' || item.status === 'RESCHEDULED').length, [appointments]);
 
   const refresh = useCallback(async () => {
     setError('');
+    setLoading(true);
     try {
-      const results = await getAppointments();
-      setAppointments(results.sort((left, right) => left.appointmentTime.localeCompare(right.appointmentTime)));
+      const results = await getAppointments(
+        page,
+        PAGE_SIZE,
+        appointmentTab === 'WALK_IN' ? 'IN_CLINIC' : appointmentTab,
+        appointmentTab === 'WALK_IN' ? undefined : ACTIVE_STATUSES,
+      );
+      setAppointments(results.content);
+      setTotalElements(results.totalElements);
+      setTotalPages(Math.max(results.totalPages, 1));
+      if (page >= results.totalPages && page > 0) setPage(Math.max(results.totalPages - 1, 0));
     } catch {
       setError('Appointments could not be loaded. Make sure the API and database are running.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [appointmentTab, page]);
 
   useEffect(() => {
     void refresh();
@@ -90,7 +88,23 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
     }
   }
 
+  async function removeAppointment(appointment: AppointmentView) {
+    if (!window.confirm('Are you sure you want to delete this appointment?')) return;
+    setUpdatingId(appointment.id);
+    setError('');
+    try {
+      await deleteAppointment(appointment.id);
+      setMobileSelected(null);
+      await refresh();
+    } catch {
+      setError(`Could not delete ${appointment.patientName}'s appointment. Clinical records may be attached.`);
+    } finally {
+      setUpdatingId('');
+    }
+  }
+
   function openModal(appointment: AppointmentView, nextModal: 'reschedule' | 'consultation') {
+    setMobileSelected(null);
     setSelected(appointment);
     setModal(nextModal);
   }
@@ -104,9 +118,11 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
   async function openWalkInConsultation(appointmentId: string) {
     setError('');
     try {
-      const results = await getAppointments();
-      const appointment = results.find((item) => item.id === appointmentId);
-      setAppointments(results.sort((left, right) => left.appointmentTime.localeCompare(right.appointmentTime)));
+      const results = await getAppointments(page, PAGE_SIZE, 'IN_CLINIC');
+      const appointment = results.content.find((item) => item.id === appointmentId);
+      setAppointments(results.content);
+      setTotalPages(Math.max(results.totalPages, 1));
+      setTotalElements(results.totalElements);
       if (!appointment) {
         setError('Walk-in record was created, but its appointment details could not be loaded.');
         return;
@@ -142,9 +158,9 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
 
       <div className="mt-7 grid gap-4 sm:grid-cols-3">
         {[
-          { label: 'Total patients', value: appointments.length, icon: Users, tone: 'bg-clinic-mint text-clinic-green' },
-          { label: 'Needs your review', value: pendingCount, icon: Clock3, tone: 'bg-amber-50 text-amber-700' },
-          { label: 'Upcoming visits', value: confirmedCount, icon: CalendarDays, tone: 'bg-sky-50 text-sky-700' },
+          { label: 'Total appointments', value: totalElements, icon: Users, tone: 'bg-clinic-mint text-clinic-green' },
+          { label: 'Needs review (page)', value: pendingCount, icon: Clock3, tone: 'bg-amber-50 text-amber-700' },
+          { label: 'Upcoming (page)', value: confirmedCount, icon: CalendarDays, tone: 'bg-sky-50 text-sky-700' },
         ].map(({ label, value, icon: Icon, tone }) => (
           <article key={label} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between"><p className="text-sm font-medium text-slate-500">{label}</p><span className={`grid h-10 w-10 place-items-center rounded-xl ${tone}`}><Icon size={19} /></span></div>
@@ -167,7 +183,7 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
             ['WALK_IN', 'Walk-In & Phone Intake'],
           ] as const).map(([type, label]) => (
             <button key={type} type="button" role="tab" aria-selected={appointmentTab === type}
-              onClick={() => setAppointmentTab(type)}
+              onClick={() => { setAppointmentTab(type); setPage(0); }}
               className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${appointmentTab === type ? 'bg-clinic-green text-white' : 'bg-clinic-paper text-slate-600 hover:bg-clinic-mint'}`}>
               {label}
             </button>
@@ -180,49 +196,44 @@ export default function DoctorDashboard({ onOpenSettings, onLogout }: DoctorDash
         ) : tabAppointments.length === 0 ? (
           <div className="px-6 py-16 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-clinic-paper text-clinic-green"><Stethoscope size={22} /></span><p className="mt-4 font-semibold text-clinic-ink">All caught up</p><p className="mt-1 text-sm text-slate-500">New {appointmentTab === 'ONLINE' ? 'online consultation' : 'in-clinic appointment'} requests will show up here.</p></div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left">
-              <thead className="bg-clinic-paper/70 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-6 py-3 font-semibold">Patient</th><th className="px-6 py-3 font-semibold">Visit</th><th className="px-6 py-3 font-semibold">Status</th><th className="px-6 py-3 text-right font-semibold">Actions</th></tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {tabAppointments.map((appointment) => (
-                  <tr key={appointment.id} className="align-top hover:bg-clinic-paper/40">
-                    <td className="px-6 py-4"><p className="font-semibold text-clinic-ink">{appointment.patientName}</p><p className="mt-1 text-xs text-slate-500">{appointment.phoneNumber}</p><p className="mt-2 max-w-xs text-sm text-slate-600">{appointment.chiefComplaintSummary}</p>
-                      {((appointment.medicalHistory?.length ?? 0) > 0 || appointment.isPregnant || appointment.ongoingTreatments) && (
-                        <p className="mt-2 max-w-xs text-xs font-bold text-red-700">
-                          MEDICAL ALERT: {[...(appointment.medicalHistory ?? []), ...(appointment.isPregnant ? ['Pregnant / breastfeeding'] : []), ...(appointment.ongoingTreatments ? [`Treatment: ${appointment.ongoingTreatments}`] : [])].join(' · ')}
-                        </p>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">
-                      <p>{formatAppointmentTime(appointment.appointmentTime)}</p>
-                      {appointmentTab === 'ONLINE'
-                        ? <span className="mt-1 inline-flex rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Online consultation</span>
-                        : <p className="mt-1 text-xs text-slate-500">{clinicDetails[appointment.clinicLocation].label}</p>}
-                    </td>
-                    <td className="px-6 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusStyles[appointment.status]}`}>{appointment.status.replaceAll('_', ' ').toLowerCase()}</span></td>
-                    <td className="px-6 py-4"><div className="flex justify-end gap-2">
-                      {appointment.status === 'PENDING_DOCTOR_APPROVAL' && <button disabled={updatingId === appointment.id} onClick={() => void confirmAppointment(appointment)} className="inline-flex items-center gap-1.5 rounded-lg bg-clinic-green px-3 py-2 text-xs font-semibold text-white hover:bg-clinic-ink disabled:opacity-50"><Check size={14} />{appointmentTab === 'ONLINE' ? 'Approve & Schedule' : 'Confirm'}</button>}
-                      {appointmentTab === 'ONLINE' && appointment.status !== 'PENDING_DOCTOR_APPROVAL' && whatsappCallUrl(appointment.phoneNumber, appointment.patientName) && (
-                        <a href={whatsappCallUrl(appointment.phoneNumber, appointment.patientName) ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"><MessageCircle size={14} /> Start WhatsApp Call</a>
-                      )}
-                      {appointmentTab === 'ONLINE' && appointment.meetingLink && (
-                        <a href={appointment.meetingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"><Video size={14} /> Open Video Room</a>
-                      )}
-                      <button disabled={updatingId === appointment.id} onClick={() => void markUnavailable(appointment)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><XCircle size={14} /> Unavailable</button>
-                      {appointmentTab === 'IN_CLINIC' && <button onClick={() => openModal(appointment, 'reschedule')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-clinic-ink hover:bg-slate-50">Reschedule</button>}
-                      <button onClick={() => openModal(appointment, 'consultation')} className="rounded-lg border border-clinic-green/20 bg-clinic-mint px-3 py-2 text-xs font-semibold text-clinic-green hover:bg-emerald-100">{appointmentTab === 'ONLINE' ? 'Write Rx & Bill' : 'Consult & bill'}</button>
-                    </div></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <AppointmentList
+            appointments={tabAppointments}
+            consultationType={appointmentTab}
+            updatingId={updatingId}
+            onConfirm={(appointment) => void confirmAppointment(appointment)}
+            onUnavailable={(appointment) => void markUnavailable(appointment)}
+            onReschedule={(appointment) => openModal(appointment, 'reschedule')}
+            onConsult={(appointment) => openModal(appointment, 'consultation')}
+            onDelete={(appointment) => void removeAppointment(appointment)}
+            onSelectMobile={setMobileSelected}
+          />
+        )}
+        {totalPages > 1 && (
+          <nav className="flex items-center justify-between border-t border-slate-100 px-4 py-4 sm:px-6" aria-label="Appointment pages">
+            <button type="button" disabled={page === 0 || loading} onClick={() => setPage((current) => Math.max(0, current - 1))}
+              className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-40">Previous</button>
+            <p className="text-sm font-medium text-slate-600">Page {page + 1} of {totalPages}</p>
+            <button type="button" disabled={page + 1 >= totalPages || loading} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+              className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-40">Next</button>
+          </nav>
         )}
       </section>
 
       <div className="mt-8"><BroadcastCard /></div>
       {selected && modal === 'reschedule' && <RescheduleModal appointment={selected} onClose={() => setModal(null)} onRescheduled={() => void closeAndRefresh()} />}
       {selected && modal === 'consultation' && <ConsultationModal appointment={selected} onClose={() => setModal(null)} onCompleted={() => void closeAndRefresh()} />}
+      {mobileSelected && (
+        <MobileAppointmentDrawer
+          appointment={mobileSelected}
+          activeTab={appointmentTab}
+          updating={updatingId === mobileSelected.id}
+          onClose={() => setMobileSelected(null)}
+          onConfirm={() => void confirmAppointment(mobileSelected)}
+          onReschedule={() => openModal(mobileSelected, 'reschedule')}
+          onConsult={() => openModal(mobileSelected, 'consultation')}
+          onDelete={() => void removeAppointment(mobileSelected)}
+        />
+      )}
     </main>
   );
 }

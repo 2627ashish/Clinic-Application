@@ -1,7 +1,6 @@
 package com.chaula.dental.service;
 
 import com.chaula.dental.util.PhoneUtils;
-import com.chaula.dental.messaging.event.WhatsAppListRow;
 import com.chaula.dental.messaging.event.WhatsAppOutboundMessage;
 import com.chaula.dental.messaging.event.WhatsAppImageMessage;
 import com.chaula.dental.messaging.event.WhatsAppLocationMessage;
@@ -20,12 +19,14 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class MetaWhatsAppCloudApiClient {
+    private static final Pattern REENGAGEMENT_ERROR_CODE = Pattern.compile("\"code\"\\s*:\\s*131047");
+
     private final RestClient restClient;
     private final String accessToken;
     private final String phoneNumberId;
@@ -52,9 +53,12 @@ public class MetaWhatsAppCloudApiClient {
     public void send(WhatsAppOutboundMessage message) {
         requireConfiguration();
 
+        String recipient = normalizePhone(message.phoneNumber());
         Map<String, Object> payload = message.hasList()
-                ? interactivePayload(message)
-                : textPayload(message);
+                ? MetaWhatsAppPayloadFactory.interactivePayload(message, recipient)
+                : MetaWhatsAppPayloadFactory.isHelloWorldTemplate(message)
+                        ? MetaWhatsAppPayloadFactory.helloWorldTemplatePayload(recipient)
+                        : MetaWhatsAppPayloadFactory.textPayload(message, recipient);
 
         String uri = "/" + phoneNumberId + "/messages";
 
@@ -68,9 +72,13 @@ public class MetaWhatsAppCloudApiClient {
                     .retrieve()
                     .toBodilessEntity();
 
-            log.info("WhatsApp message successfully accepted by Meta");
+            log.info("WhatsApp message request accepted by Meta; final delivery status follows asynchronously.");
 
         } catch (RestClientResponseException exception) {
+            if ("text".equals(payload.get("type")) && isReengagementWindowError(exception)) {
+                sendHelloWorldTemplate(message.phoneNumber());
+                return;
+            }
             log.error("Meta rejected WhatsApp payload [HTTP {}]: {}",
                     exception.getStatusCode().value(),
                     exception.getResponseBodyAsString());
@@ -223,43 +231,29 @@ public class MetaWhatsAppCloudApiClient {
         return fileName.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
-    private Map<String, Object> textPayload(WhatsAppOutboundMessage message) {
-        return Map.of(
-                "messaging_product", "whatsapp",
-                "recipient_type", "individual",
-                "to", normalizePhone(message.phoneNumber()),
-                "type", "text",
-                "text", Map.of("preview_url", false, "body", message.text())
-        );
+    private void sendHelloWorldTemplate(String rawRecipient) {
+        String recipient = normalizePhone(rawRecipient);
+        Map<String, Object> payload = MetaWhatsAppPayloadFactory.helloWorldTemplatePayload(recipient);
+        try {
+            restClient.post()
+                    .uri("/" + phoneNumberId + "/messages")
+                    .headers(headers -> headers.setBearerAuth(accessToken))
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException exception) {
+            log.error("Meta rejected WhatsApp template fallback [HTTP {}]: {}",
+                    exception.getStatusCode().value(), exception.getResponseBodyAsString());
+            throw deliveryException(exception);
+        }
+        log.warn("Patient {} is outside the 24-hr session window. Dispatched pre-approved template fallback.",
+                recipient);
     }
 
-    private Map<String, Object> interactivePayload(WhatsAppOutboundMessage message) {
-        List<Map<String, String>> rows = message.listRows().stream()
-                .limit(10)
-                .map(this::rowPayload)
-                .toList();
-        Map<String, Object> section = Map.of("title", "Available times", "rows", rows);
-        Map<String, Object> interactive = Map.of(
-                "type", "list",
-                "header", Map.of("type", "text", "text", message.listTitle()),
-                "body", Map.of("text", message.text()),
-                "action", Map.of("button", message.listButton(), "sections", List.of(section))
-        );
-        return Map.of(
-                "messaging_product", "whatsapp",
-                "recipient_type", "individual",
-                "to", normalizePhone(message.phoneNumber()),
-                "type", "interactive",
-                "interactive", interactive
-        );
-    }
-
-    private Map<String, String> rowPayload(WhatsAppListRow row) {
-        return Map.of(
-                "id", row.id(),
-                "title", row.title(),
-                "description", row.description()
-        );
+    private boolean isReengagementWindowError(RestClientResponseException exception) {
+        int status = exception.getStatusCode().value();
+        return (status == HttpStatus.BAD_REQUEST.value() || status == HttpStatus.NOT_FOUND.value())
+                && REENGAGEMENT_ERROR_CODE.matcher(exception.getResponseBodyAsString()).find();
     }
 
     private String normalizePhone(String phoneNumber) {

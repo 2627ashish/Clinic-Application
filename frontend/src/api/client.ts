@@ -11,6 +11,7 @@ import type {
   WalkInRequest,
   ClinicConfig,
 } from '../types';
+import type { AppointmentResponse, ConsultationType } from '../types/appointment';
 
 export const client = axios.create({
   baseURL: '/api',
@@ -66,8 +67,10 @@ export async function setupDoctorAccount(
 }
 
 export interface PatientOtpResponse {
+  success: boolean;
   message: string;
-  demoCode: string | null;
+  resendCooldown: number;
+  mockOtp: string | null;
 }
 
 export interface PatientVisitSummary {
@@ -83,12 +86,17 @@ export interface PatientProfileView {
   fullName: string;
   phoneNumber: string;
   age: number | null;
+  dateOfBirth: string | null;
   gender: string | null;
 }
 
 export interface PatientPortalSession {
   token: string;
   patientName: string;
+}
+
+export interface PatientAuthResponse {
+  patients: PatientPortalSession[];
 }
 
 export async function doctorLogin(username: string, password: string): Promise<DoctorLoginResponse> {
@@ -101,12 +109,12 @@ export async function changeDoctorPassword(currentPassword: string, newPassword:
 }
 
 export async function requestPatientOtp(phoneNumber: string): Promise<PatientOtpResponse> {
-  const response = await client.post<PatientOtpResponse>('/patient-portal/otp', { phoneNumber });
+  const response = await client.post<PatientOtpResponse>('/auth/patient/request-otp', { phoneNumber });
   return response.data;
 }
 
-export async function verifyPatientOtp(phoneNumber: string, code: string): Promise<PatientPortalSession> {
-  const response = await client.post<PatientPortalSession>('/patient-portal/verify', { phoneNumber, code });
+export async function verifyPatientOtp(phoneNumber: string, code: string): Promise<PatientAuthResponse> {
+  const response = await client.post<PatientAuthResponse>('/auth/patient/verify-otp', { phoneNumber, code });
   return response.data;
 }
 
@@ -126,7 +134,23 @@ export async function getPatientVisits(token: string): Promise<PatientVisitSumma
 
 export async function downloadPatientPrescription(token: string, appointmentId: string): Promise<Blob> {
   const response = await client.get<Blob>(
-    `/patient-portal/visits/${encodeURIComponent(appointmentId)}/pdf`,
+    `/appointments/${encodeURIComponent(appointmentId)}/prescription-pdf`,
+    { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' },
+  );
+  return response.data;
+}
+
+export async function downloadPatientBill(token: string, appointmentId: string): Promise<Blob> {
+  const response = await client.get<Blob>(
+    `/appointments/${encodeURIComponent(appointmentId)}/bill-pdf`,
+    { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' },
+  );
+  return response.data;
+}
+
+export async function downloadPatientHandwrittenRx(token: string, appointmentId: string): Promise<Blob> {
+  const response = await client.get<Blob>(
+    `/appointments/${encodeURIComponent(appointmentId)}/handwritten-rx/download`,
     { headers: { Authorization: `Bearer ${token}` }, responseType: 'blob' },
   );
   return response.data;
@@ -194,9 +218,30 @@ export async function getClinicConfig(): Promise<ClinicConfig> {
   return response.data;
 }
 
-export async function getAppointments(): Promise<AppointmentView[]> {
-  const response = await client.get<AppointmentView[]>('/appointments');
-  return response.data;
+export interface AppointmentPage {
+  content: AppointmentView[];
+  totalPages: number;
+  totalElements: number;
+  number: number;
+}
+
+export async function getAppointments(
+  page = 0,
+  size = 10,
+  type?: ConsultationType,
+  status?: string,
+): Promise<AppointmentPage> {
+  const response = await client.get<{
+    content: AppointmentResponse[];
+    totalPages: number;
+    totalElements: number;
+    number: number;
+  }>('/appointments', { params: { page, size, ...(type ? { type } : {}), ...(status ? { status } : {}) } });
+  return { ...response.data, content: response.data.content };
+}
+
+export async function deleteAppointment(id: string): Promise<void> {
+  await client.delete(`/appointments/${encodeURIComponent(id)}`);
 }
 
 export async function updateAppointmentStatus(

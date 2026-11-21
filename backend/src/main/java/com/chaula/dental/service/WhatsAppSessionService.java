@@ -59,7 +59,7 @@ public class WhatsAppSessionService {
                 case AWAITING_DATE -> captureDate(phone, selection, session);
                 case AWAITING_TIME -> captureTime(phone, selection, session);
                 case AWAITING_NAME -> captureName(phone, text, session);
-                case AWAITING_AGE -> captureAge(phone, text, session);
+                case AWAITING_DATE_OF_BIRTH -> captureDateOfBirth(phone, text, session);
                 case AWAITING_GENDER -> captureGender(phone, selection, session);
             };
         });
@@ -198,21 +198,21 @@ public class WhatsAppSessionService {
             messagePublisher.publishText(phoneNumber, "Please enter your name (2-100 characters).");
             return session;
         }
-        messagePublisher.publishText(phoneNumber, "Thanks, " + name + "! How old are you? (Enter a number from 1 to 120.)");
-        return BookingSession.awaitingAge(
+        messagePublisher.publishText(phoneNumber, "Thanks, " + name + "! Please enter your date of birth as YYYY-MM-DD.");
+        return BookingSession.awaitingDateOfBirth(
                 session.problem(), session.clinicLocation(), session.preferredTime(), name);
     }
 
-    private BookingSession captureAge(String phoneNumber, String text, BookingSession session) {
-        int age;
+    private BookingSession captureDateOfBirth(String phoneNumber, String text, BookingSession session) {
+        LocalDate dateOfBirth;
         try {
-            age = Integer.parseInt(text.trim());
-        } catch (NumberFormatException exception) {
-            messagePublisher.publishText(phoneNumber, "Please enter your age as a number from 1 to 120.");
+            dateOfBirth = LocalDate.parse(text.trim());
+        } catch (java.time.format.DateTimeParseException exception) {
+            messagePublisher.publishText(phoneNumber, "Please enter your date of birth in YYYY-MM-DD format.");
             return session;
         }
-        if (age < 1 || age > 120) {
-            messagePublisher.publishText(phoneNumber, "Please enter an age from 1 to 120.");
+        if (dateOfBirth.isAfter(LocalDate.now()) || dateOfBirth.isBefore(LocalDate.now().minusYears(120))) {
+            messagePublisher.publishText(phoneNumber, "Please enter a valid date of birth within the last 120 years.");
             return session;
         }
         messagePublisher.publishList(phoneNumber, "Please choose your gender.", "Gender", "Select", List.of(
@@ -221,7 +221,8 @@ public class WhatsAppSessionService {
                 new WhatsAppListRow("book-gender|Other", "Other", "Select Other")
         ));
         return BookingSession.awaitingGender(
-                session.problem(), session.clinicLocation(), session.preferredTime(), session.patientName(), age);
+                session.problem(), session.clinicLocation(), session.preferredTime(),
+                session.patientName(), dateOfBirth);
     }
 
     private BookingSession captureGender(String phoneNumber, String replyId, BookingSession session) {
@@ -240,11 +241,14 @@ public class WhatsAppSessionService {
 
     private void createAppointment(String phoneNumber, BookingSession session, String gender) {
         String normalizedPhone = PhoneUtils.normalizeIndianPhone(phoneNumber);
-        Patient patient = patientRepository.findByPhoneNumber(normalizedPhone)
-                .or(() -> patientRepository.findFirstByPhoneNumberEndingWith(lastTenDigits(normalizedPhone)))
+        Patient patient = patientRepository.findByPhoneNumberEndingWith(lastTenDigits(normalizedPhone)).stream()
+                .filter(existing -> existing.getFullName() != null
+                        && existing.getFullName().strip().equalsIgnoreCase(session.patientName().strip()))
+                .filter(existing -> session.dateOfBirth().equals(existing.getDateOfBirth()))
+                .findFirst()
                 .orElseGet(() -> Patient.builder().phoneNumber(normalizedPhone).build());
         patient.setFullName(session.patientName());
-        patient.setAge(session.age());
+        patient.setDateOfBirth(session.dateOfBirth());
         patient.setGender(gender);
         Patient savedPatient = patientRepository.save(patient);
 
@@ -252,6 +256,7 @@ public class WhatsAppSessionService {
                 .patientId(savedPatient.getId())
                 .appointmentTime(session.preferredTime())
                 .clinicLocation(session.clinicLocation())
+                .dateOfBirth(savedPatient.getDateOfBirth())
                 .status(AppointmentStatus.PENDING_DOCTOR_APPROVAL)
                 .chiefComplaintSummary(session.problem())
                 .build());

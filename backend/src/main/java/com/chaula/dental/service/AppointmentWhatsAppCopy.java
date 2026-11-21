@@ -62,6 +62,16 @@ public final class AppointmentWhatsAppCopy {
                 ConsultationType.IN_CLINIC, null);
     }
 
+    public static String postTreatmentFeedback(String patientName) {
+        return "Dear " + patientName + ",\n\n"
+                + "Thank you for visiting Dr. B.S. Chauhan Dental Clinic today. We hope your treatment was comfortable!\n\n"
+                + "🌟 How was your experience?\n"
+                + "Please take 30 seconds to rate us on Google:\n"
+                + "👉 https://jsdl.in/DT-23XT6URJ\n\n"
+                + "For any post-treatment pain or query, call us at +91-98107-64715.\n"
+                + "\"Your smile, our commitment\"";
+    }
+
     public static String statusUpdate(
             AppointmentStatus status,
             String patientName,

@@ -1,6 +1,7 @@
 package com.chaula.dental.service;
 
 import com.chaula.dental.messaging.event.WhatsAppInboundMessage;
+import com.chaula.dental.messaging.event.WhatsAppOutboundMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,6 +32,8 @@ public class WhatsAppWebhookService {
     private final ObjectMapper objectMapper;
     private final WhatsAppInboundEventSender eventSender;
     private final WhatsAppInboundMessageHandler inboundMessageHandler;
+    private final WhatsAppDirectMessageSender directMessageSender;
+    private final ConcurrentHashMap<String, Instant> dispatchedFallbacks = new ConcurrentHashMap<>();
 
     @Value("${whatsapp.webhook.app-secret:}")
     private String appSecret;
@@ -55,7 +62,7 @@ public class WhatsAppWebhookService {
                 || !"whatsapp_business_account".equals(root.path("object").asText())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid WhatsApp webhook object.");
         }
-        if (!containsInboundMessages(root)) return;
+        if (!containsInboundMessages(root) && !containsReengagementFailures(root)) return;
         if (signatureRequired || signature != null) {
             verifySignature(payload, signature);
         }
@@ -69,6 +76,7 @@ public class WhatsAppWebhookService {
                     JsonNode value = change.path("value");
                     JsonNode statuses = value.path("statuses");
                     if (statuses.isArray() && !statuses.isEmpty()) {
+                        processFailedStatuses(statuses);
                         continue;
                     }
                     JsonNode messages = value.path("messages");
@@ -96,6 +104,61 @@ public class WhatsAppWebhookService {
             }
         }
         return false;
+    }
+
+    private boolean containsReengagementFailures(JsonNode root) {
+        JsonNode entries = root.path("entry");
+        if (!entries.isArray()) return false;
+        for (JsonNode entry : entries) {
+            JsonNode changes = entry.path("changes");
+            if (!changes.isArray()) continue;
+            for (JsonNode change : changes) {
+                JsonNode statuses = change.path("value").path("statuses");
+                if (!statuses.isArray()) continue;
+                for (JsonNode status : statuses) {
+                    if (!"failed".equals(status.path("status").asText())) continue;
+                    JsonNode errors = status.path("errors");
+                    if (!errors.isArray()) continue;
+                    for (JsonNode error : errors) {
+                        if (error.path("code").asInt(-1) == 131047) return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void processFailedStatuses(JsonNode statuses) {
+        Instant now = Instant.now();
+        Instant cutoff = now.minus(Duration.ofHours(24));
+        dispatchedFallbacks.entrySet().removeIf(entry -> entry.getValue().isBefore(cutoff));
+        for (JsonNode status : statuses) {
+            if (!"failed".equals(status.path("status").asText())) continue;
+            JsonNode errors = status.path("errors");
+            if (!errors.isArray()) continue;
+            boolean reengagementWindowError = false;
+            for (JsonNode error : errors) {
+                if (error.path("code").asInt(-1) == 131047) {
+                    reengagementWindowError = true;
+                    break;
+                }
+            }
+            String recipientPhone = status.path("recipient_id").asText("");
+            if (!reengagementWindowError || recipientPhone.isBlank()) continue;
+
+            String failedMessageId = status.path("id").asText("");
+            if (!failedMessageId.isBlank()
+                    && dispatchedFallbacks.putIfAbsent(failedMessageId, now) != null) continue;
+            try {
+                directMessageSender.send(WhatsAppOutboundMessage.template(
+                        recipientPhone, "", "hello_world", "en_US", List.of()));
+                log.warn("Patient {} is outside the 24-hr session window. Dispatched pre-approved template fallback.",
+                        recipientPhone);
+            } catch (RuntimeException exception) {
+                if (!failedMessageId.isBlank()) dispatchedFallbacks.remove(failedMessageId, now);
+                throw exception;
+            }
+        }
     }
 
     private void publishIncoming(JsonNode message) throws Exception {

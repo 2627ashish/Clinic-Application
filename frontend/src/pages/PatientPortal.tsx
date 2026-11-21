@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import axios from 'axios';
-import { CalendarDays, Download, Eye, HeartPulse, LoaderCircle, LogOut, X } from 'lucide-react';
+import { CalendarDays, Download, Eye, LoaderCircle, X } from 'lucide-react';
 import {
+  downloadPatientBill,
+  downloadPatientHandwrittenRx,
   downloadPatientDocument,
   downloadPatientPrescription,
   getPatientDocuments,
   getPatientProfile,
   getPatientVisits,
-  requestPatientOtp,
-  verifyPatientOtp,
 } from '../api/client';
+import PatientOtpLogin from '../components/PatientOtpLogin';
+import PatientProfileCard from '../components/portal/PatientProfileCard';
+import PatientVisitCard from '../components/portal/PatientVisitCard';
 import type { ClinicPage } from '../components/Navbar';
 import type { PatientVisitSummary } from '../api/client';
 import type { PatientDocumentView } from '../types';
@@ -20,9 +21,6 @@ const NAME_KEY = 'patient_portal_name';
 const PATIENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export default function PatientPortal({ onNavigate }: { onNavigate: (page: ClinicPage) => void }) {
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [demoCode, setDemoCode] = useState('');
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '');
   const [patientName, setPatientName] = useState(() => localStorage.getItem(NAME_KEY) ?? '');
   const [patientProfile, setPatientProfile] = useState<Awaited<ReturnType<typeof getPatientProfile>> | null>(null);
@@ -32,9 +30,7 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
   const [documentPreview, setDocumentPreview] = useState<{ fileName: string; contentType: string; url: string } | null>(null);
   const [portalTab, setPortalTab] = useState<'prescriptions' | 'xrays' | 'other'>('prescriptions');
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -98,42 +94,6 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     };
   }, [token]);
 
-  async function sendCode() {
-    setSending(true);
-    setError('');
-    setNotice('');
-    setDemoCode('');
-    try {
-      const response = await requestPatientOtp(phone);
-      setNotice(response.message);
-      setDemoCode(response.demoCode ?? '');
-    } catch {
-      setError('We could not send a code. Enter a valid phone number and try again.');
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError('');
-    setSending(true);
-    try {
-      const session = await verifyPatientOtp(phone, code);
-      localStorage.setItem(TOKEN_KEY, session.token);
-      localStorage.setItem(NAME_KEY, session.patientName);
-      setToken(session.token);
-      setPatientName(session.patientName);
-    } catch (error: unknown) {
-      const message = axios.isAxiosError<{ message?: string }>(error)
-        ? error.response?.data?.message
-        : undefined;
-      setError(message ?? 'Could not verify the code. Check it is current and was requested for this phone number.');
-    } finally {
-      setSending(false);
-    }
-  }
-
   function signOut() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(NAME_KEY);
@@ -144,23 +104,6 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     setDocuments([]);
     setDocumentPreviews({});
     setDocumentPreview(null);
-    setDemoCode('');
-    setCode('');
-  }
-
-  async function download(appointmentId: string) {
-    setError('');
-    try {
-      const blob = await downloadPatientPrescription(token, appointmentId);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `prescription-${appointmentId}.pdf`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setError('The prescription could not be downloaded. Please try again.');
-    }
   }
 
   async function downloadDocument(documentId: string, fileName: string) {
@@ -178,17 +121,36 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
     }
   }
 
-  async function viewPrescription(appointmentId: string) {
+  async function downloadHandwrittenRx(appointmentId: string) {
     setError('');
     try {
-      const blob = await downloadPatientPrescription(token, appointmentId);
+      const blob = await downloadPatientHandwrittenRx(token, appointmentId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = blob.type === 'image/jpeg'
+        ? 'Chauhan_Dental_Handwritten_Rx.jpg'
+        : 'Chauhan_Dental_Handwritten_Rx.png';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError('The handwritten prescription could not be downloaded. Please try again.');
+    }
+  }
+
+  async function viewAppointmentPdf(appointmentId: string, documentType: 'prescription' | 'bill') {
+    setError('');
+    try {
+      const blob = documentType === 'prescription'
+        ? await downloadPatientPrescription(token, appointmentId)
+        : await downloadPatientBill(token, appointmentId);
       setDocumentPreview({
-        fileName: `prescription-${appointmentId}.pdf`,
+        fileName: `${documentType}-${appointmentId}.pdf`,
         contentType: 'application/pdf',
         url: URL.createObjectURL(blob),
       });
     } catch {
-      setError('The prescription could not be opened. Please try again.');
+      setError(`The outpatient ${documentType} could not be opened. Please try again.`);
     }
   }
 
@@ -207,60 +169,25 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
   }
 
   const visibleDocuments = documents.filter((document) => portalTab === 'prescriptions'
-    ? document.category === 'EXTERNAL_PRESCRIPTION' || document.category === 'HANDWRITTEN_RX'
+    ? document.category === 'EXTERNAL_PRESCRIPTION'
     : portalTab === 'xrays'
       ? document.category === 'XRAY_RVG'
       : document.category === 'LAB_REPORT' || document.category === 'OTHER');
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8 sm:py-12">
+    <main className="relative min-h-screen overflow-hidden bg-slate-50 px-5 py-8 sm:py-12">
+      <span aria-hidden="true" className="pointer-events-none absolute right-8 top-24 select-none text-[14rem] leading-none text-emerald-900/[0.035]">🦷</span>
+      <div className="relative z-10 mx-auto max-w-3xl">
       {!token ? (
-        <section className="mx-auto max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
-          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-clinic-mint text-clinic-green"><HeartPulse size={26} /></span>
-          <h1 className="mt-5 text-center text-2xl font-bold text-clinic-ink">Patient Portal</h1>
-          <p className="mt-2 text-center text-sm text-slate-500">Sign in to view your visits and prescriptions.</p>
-          {error && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-          {notice && <p role="status" className="mt-5 rounded-xl bg-clinic-mint p-3 text-sm text-clinic-green">{notice}</p>}
-          {demoCode && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">Demo Verification Code: {demoCode}</p>}
-          <label className="mt-6 block text-sm font-semibold text-clinic-ink">10-digit phone number
-            <input required inputMode="tel" autoComplete="tel" maxLength={10} pattern="[0-9]{10}" value={phone}
-              onChange={(event) => setPhone(event.target.value.replace(/\D/g, '').slice(0, 10))}
-              className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
-          </label>
-          {!notice ? (
-            <button type="button" disabled={sending || phone.length !== 10} onClick={() => void sendCode()}
-              className="mt-5 min-h-12 w-full rounded-xl bg-clinic-green px-4 font-semibold text-white disabled:opacity-50">
-              {sending ? 'Sending…' : 'Send WhatsApp OTP'}
-            </button>
-          ) : (
-            <form onSubmit={(event) => void signIn(event)}>
-              <label className="mt-4 block text-sm font-semibold text-clinic-ink">4-digit verification code
-                <input required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={code}
-                  onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
-              </label>
-              <button disabled={sending || code.length !== 4} className="mt-5 min-h-12 w-full rounded-xl bg-clinic-green px-4 font-semibold text-white disabled:opacity-50">
-                {sending ? 'Verifying…' : 'Verify and continue'}
-              </button>
-              <button type="button" onClick={() => { setNotice(''); setDemoCode(''); setCode(''); }}
-                className="mt-3 min-h-11 w-full rounded-xl border border-slate-200 font-semibold text-slate-600">Use another number</button>
-            </form>
-          )}
-        </section>
+        <PatientOtpLogin onSignedIn={(session) => {
+          localStorage.setItem(TOKEN_KEY, session.token);
+          localStorage.setItem(NAME_KEY, session.patientName);
+          setToken(session.token);
+          setPatientName(session.patientName);
+        }} />
       ) : (
         <>
-          <header className="flex flex-col justify-between gap-4 rounded-3xl bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:p-8">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-wider text-clinic-green">Patient portal</p>
-              <h1 className="mt-2 text-2xl font-bold text-clinic-ink">Namaste, {patientName}!</h1>
-              <p className="mt-2 text-sm text-slate-500">
-                {patientProfile
-                  ? `${patientProfile.phoneNumber} · Age: ${patientProfile.age == null ? 'Not recorded' : patientProfile.age} · Gender: ${patientProfile.gender || 'Not recorded'}`
-                  : 'Loading your details…'}
-              </p>
-            </div>
-            <button onClick={signOut} className="inline-flex min-h-11 items-center gap-2 self-start rounded-xl border border-slate-200 px-4 font-semibold text-slate-600 sm:self-auto"><LogOut size={16} /> Sign out</button>
-          </header>
+          <PatientProfileCard profile={patientProfile} patientName={patientName} onSignOut={signOut} />
           <section className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
             <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4" role="tablist" aria-label="Patient records">
               {([
@@ -294,40 +221,23 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
                     </div>
                   </article>
                 ))}
-                {visits.map((visit) => (
-                  <article key={visit.appointmentId} className="rounded-2xl border border-slate-100 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-clinic-green">
-                      {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(visit.visitDate))}
-                    </p>
-                    <p className="mt-2 text-sm text-clinic-ink"><strong>Diagnosis:</strong> {visit.diagnosis}</p>
-                    <p className="mt-1 text-sm text-clinic-ink"><strong>Procedure:</strong> {visit.procedurePerformed}</p>
-                    {visit.medicines.length > 0 && (
-                      <div className="mt-3 rounded-xl bg-clinic-paper p-3">
-                        <p className="text-sm font-bold text-clinic-ink">Prescription</p>
-                        <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                          {visit.medicines.map((medicine, index) => (
-                            <li key={`${medicine.name}-${index}`}>
-                              <strong>{medicine.name}</strong> · {medicine.dosage} · {medicine.duration}
-                              <span className="block text-xs text-slate-500">{medicine.instructions}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {visit.aftercareGuidelines && <p className="mt-2 text-sm text-clinic-ink"><strong>Aftercare:</strong> {visit.aftercareGuidelines}</p>}
-                    <p className="mt-1 text-xs text-slate-500">Dr. B.S. Chauhan</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void viewPrescription(visit.appointmentId)}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-clinic-mint px-4 text-sm font-semibold text-clinic-green">
-                        <Eye size={16} /> View Prescription PDF
-                      </button>
-                      <button type="button" onClick={() => void download(visit.appointmentId)}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">
-                        <Download size={16} /> Download PDF
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                {visits.map((visit) => {
+                  const handwrittenPrescription = documents.find((document) =>
+                    document.appointmentId === visit.appointmentId && document.category === 'HANDWRITTEN_RX');
+                  return (
+                    <PatientVisitCard
+                      key={visit.appointmentId}
+                      visit={visit}
+                      handwrittenPrescription={handwrittenPrescription}
+                      handwrittenPreviewUrl={handwrittenPrescription
+                        ? documentPreviews[handwrittenPrescription.id] : undefined}
+                      onViewPrescription={() => void viewAppointmentPdf(visit.appointmentId, 'prescription')}
+                      onViewBill={() => void viewAppointmentPdf(visit.appointmentId, 'bill')}
+                      onViewHandwrittenPrescription={() => handwrittenPrescription && void viewDocument(handwrittenPrescription)}
+                      onDownloadHandwrittenPrescription={() => void downloadHandwrittenRx(visit.appointmentId)}
+                    />
+                  );
+                })}
               </div>
             ) : visibleDocuments.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-500">No documents in this category yet.</p>
@@ -355,6 +265,7 @@ export default function PatientPortal({ onNavigate }: { onNavigate: (page: Clini
           <button onClick={() => onNavigate('patient')} className="mt-5 min-h-12 w-full rounded-xl bg-clinic-green px-4 font-semibold text-white sm:w-auto">Book follow-up appointment</button>
         </>
       )}
+      </div>
       {documentPreview && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={documentPreview.fileName}>
           <section className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">

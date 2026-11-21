@@ -10,4 +10,6 @@ public interface TreatmentAndBillRepository extends MongoRepository<TreatmentAnd
     List<TreatmentAndBill> findByPatientIdOrderByCreatedAtDesc(String patientId);
 
     Optional<TreatmentAndBill> findByAppointmentId(String appointmentId);
+
+    List<TreatmentAndBill> findByPatientId(String patientId);
 }

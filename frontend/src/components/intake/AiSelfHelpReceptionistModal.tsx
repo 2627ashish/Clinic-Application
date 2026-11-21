@@ -3,10 +3,11 @@ import type { FormEvent } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { getFirstAidGuidance, type GuidanceLanguage } from './firstAidGuidance';
 import type { ConsultationType } from '../../types/appointment';
+import { calculateAge } from '../../utils/demographics';
 
 interface AiSelfHelpReceptionistModalProps {
   onClose: () => void;
-  onBook: (symptoms: string, age: number, gender: 'Male' | 'Female' | 'Other', consultationType: ConsultationType) => void;
+  onBook: (symptoms: string, dateOfBirth: string, gender: 'Male' | 'Female' | 'Other', consultationType: ConsultationType) => void;
 }
 
 const greeting: Record<GuidanceLanguage, string> = {
@@ -27,10 +28,11 @@ const quickSymptoms: Record<GuidanceLanguage, string[]> = {
 export default function AiSelfHelpReceptionistModal({ onClose, onBook }: AiSelfHelpReceptionistModalProps) {
   const [language, setLanguage] = useState<GuidanceLanguage>('en');
   const [symptoms, setSymptoms] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | ''>('');
   const [consultationType, setConsultationType] = useState<ConsultationType>('IN_CLINIC');
   const [guidance, setGuidance] = useState<{ title: string; advice: string } | null>(null);
+  const age = calculateAge(dateOfBirth);
 
   function getAdvice(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -109,10 +111,13 @@ export default function AiSelfHelpReceptionistModal({ onClose, onBook }: AiSelfH
               {consultationType === 'ONLINE' && <p className="mt-2 text-xs leading-5 text-slate-600">{language === 'en' ? 'Dr. B.S. Chauhan will connect with you via WhatsApp Video Call at your booked time.' : 'डॉ. चौहान बुक किए गए समय पर व्हाट्सऐप वीडियो कॉल करेंगे।'}</p>}
             </fieldset>
             <label className="mt-3 block text-sm font-semibold text-clinic-ink">
-              {language === 'en' ? 'Age' : 'आयु'}
-              <input type="number" inputMode="numeric" min="1" max="120" value={age}
-                onChange={(event) => setAge(event.target.value)}
+              {language === 'en' ? 'Date of birth' : 'जन्म तिथि'}
+              <input type="date" max={new Date().toISOString().slice(0, 10)} value={dateOfBirth}
+                onChange={(event) => setDateOfBirth(event.target.value)}
                 className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                {language === 'en' ? 'Live age' : 'आयु'}: {age === null ? '—' : `${age} years`}
+              </span>
             </label>
             <fieldset className="mt-3">
               <legend className="text-sm font-semibold text-clinic-ink">{language === 'en' ? 'Gender' : 'लिंग'}</legend>
@@ -126,8 +131,8 @@ export default function AiSelfHelpReceptionistModal({ onClose, onBook }: AiSelfH
                 ))}
               </div>
             </fieldset>
-            <button type="button" disabled={!age || Number(age) < 1 || Number(age) > 120 || !gender}
-              onClick={() => gender && onBook(symptoms.trim(), Number(age), gender, consultationType)}
+            <button type="button" disabled={age === null || age < 1 || age > 120 || !gender}
+              onClick={() => gender && dateOfBirth && onBook(symptoms.trim(), dateOfBirth, gender, consultationType)}
               className="mt-4 w-full rounded-xl bg-clinic-green px-5 py-3 font-semibold text-white hover:bg-clinic-ink disabled:cursor-not-allowed disabled:opacity-50">
               {language === 'en' ? 'Book with Dr. Chauhan' : 'डॉ. चौहान के साथ बुक करें'}
             </button>

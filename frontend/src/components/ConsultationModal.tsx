@@ -137,20 +137,21 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
   const currentHistory = visitHistory[historyIndex];
 
   return (
-    <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-clinic-ink/45 p-4">
-      <section role="dialog" aria-modal="true" aria-labelledby="consultation-title" className="my-auto w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
-        <div className="flex items-start justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/70 p-2 backdrop-blur-sm sm:p-6">
+      <section role="dialog" aria-modal="true" aria-labelledby="consultation-title" className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-clinic-mint text-clinic-green"><ClipboardPlus size={22} /></span>
             <div>
               <h2 id="consultation-title" className="text-xl font-bold text-clinic-ink">Consultation &amp; bill</h2>
-              <p className="text-sm text-slate-500">{appointment.patientName} · {appointment.phoneNumber}</p>
+              <p className="text-sm text-slate-500">{appointment.patientName} · {appointment.patientAge ?? 'Age not recorded'} / {appointment.gender ?? 'Gender not recorded'}</p>
             </div>
           </div>
           <button aria-label="Close dialog" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100"><X size={19} /></button>
-        </div>
+        </header>
+        <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
         {visitHistory.length > 0 && (
-          <section className="mt-5 rounded-2xl border border-slate-100 bg-clinic-paper p-4" aria-label="Previous prescription pages">
+          <section className="rounded-2xl border border-slate-100 bg-clinic-paper p-4" aria-label="Previous prescription pages">
             <div className="flex items-center justify-between gap-3">
               <div><p className="text-xs font-bold uppercase tracking-wide text-clinic-green">Patient visit folder</p><p className="mt-1 text-sm font-semibold text-clinic-ink">Visit {visitHistory.length - historyIndex} of {visitHistory.length}</p></div>
               <div className="flex gap-2">
@@ -161,14 +162,14 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
             {currentHistory && <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><p><strong>Date:</strong> {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(currentHistory.createdAt))}</p><p><strong>Diagnosis:</strong> {currentHistory.symptomsAndDiagnosis}</p><p className="sm:col-span-2"><strong>Procedure:</strong> {currentHistory.procedurePerformed}</p></div>}
           </section>
         )}
-        {historyError && <p role="status" className="mt-3 text-xs text-amber-700">{historyError}</p>}
-        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Prescription entry mode">
+        {historyError && <p role="status" className="text-xs text-amber-700">{historyError}</p>}
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Prescription entry mode">
           <button type="button" role="tab" aria-selected={prescriptionMode === 'typed'} onClick={() => { setPrescriptionMode('typed'); setHandwrittenPrescription(null); }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'typed' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>⌨️ Type Prescription</button>
           <button type="button" role="tab" aria-selected={prescriptionMode === 'handwritten'} onClick={() => setPrescriptionMode('handwritten')}
             className={`rounded-lg px-4 py-2 text-sm font-semibold ${prescriptionMode === 'handwritten' ? 'bg-clinic-green text-white' : 'bg-slate-100 text-slate-600'}`}>✏️ Apple Pencil Handwritten Pad</button>
         </div>
-        <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
+        <form id="consultation-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-semibold text-clinic-ink">
             Symptoms &amp; diagnosis
             <textarea required rows={3} value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} className={fieldClass} placeholder="Clinical findings and diagnosis" />
@@ -185,11 +186,8 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
           <AftercareEditor value={aftercare} onChange={setAftercare} />
           <BillEditor items={billItems} paidAmount={paidAmount} onItemsChange={setBillItems} onPaidAmountChange={setPaidAmount} />
           {error && <p role="alert" className="text-sm text-red-600 sm:col-span-2">{error}</p>}
-          <button disabled={submitting} className="rounded-xl bg-clinic-green px-5 py-3 font-semibold text-white hover:bg-clinic-ink disabled:opacity-60 sm:col-span-2">
-            {submitting ? 'Saving visit…' : 'Save visit & send summary'}
-          </button>
         </form>
-        <section className="mt-5 rounded-2xl border border-slate-100 p-4">
+        <section className="rounded-2xl border border-slate-100 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h3 className="font-semibold text-clinic-ink">📎 Upload X-Ray / Docs</h3><p className="mt-1 text-xs text-slate-500">PDF, JPEG, PNG, or WebP · up to 8 MB</p></div>
             <select aria-label="Document category" value={documentCategory} onChange={(event) => setDocumentCategory(event.target.value as Exclude<PatientDocumentCategory, 'HANDWRITTEN_RX'>)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -206,6 +204,13 @@ export default function ConsultationModal({ appointment, onClose, onCompleted }:
             <button type="button" disabled={!documentFile || uploadingDocument} onClick={() => void uploadDocument()} className="ml-auto min-h-10 rounded-lg bg-clinic-green px-4 text-sm font-semibold text-white disabled:opacity-50">{uploadingDocument ? 'Uploading…' : 'Upload document'}</button>
           </div>
         </section>
+        </div>
+        <footer className="sticky bottom-0 z-10 shrink-0 border-t border-slate-100 bg-white p-3 sm:px-6">
+          <button type="submit" form="consultation-form" disabled={submitting}
+            className="w-full rounded-xl bg-clinic-green px-5 py-3 font-semibold text-white hover:bg-clinic-ink disabled:opacity-60">
+            {submitting ? 'Saving visit…' : 'Save Visit & Send Summary'}
+          </button>
+        </footer>
       </section>
       {showHandwrittenPad && <DigitalApplePencilPad
         appointmentId={appointment.id}

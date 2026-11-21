@@ -69,6 +69,8 @@ class AppointmentServiceTest {
         service.completeVisit("appointment-1", request);
 
         verify(whatsapp).sendDocumentAsync("919999999999", "visit-summary.pdf", new byte[]{4, 5, 6});
+        verify(whatsapp).sendTextMessageAsync(
+                "919999999999", AppointmentWhatsAppCopy.postTreatmentFeedback("Patient"));
         verify(whatsapp).sendImageAsync(
                 "919999999999",
                 "Your handwritten prescription from Dr. B.S. Chauhan.",

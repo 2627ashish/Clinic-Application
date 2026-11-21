@@ -17,4 +17,14 @@ public interface PatientDocumentRepository extends MongoRepository<PatientDocume
             String appointmentId,
             PatientDocumentCategory category
     );
+
+    Optional<PatientDocument> findFirstByAppointmentIdAndPatientIdAndCategoryOrderByCreatedAtDesc(
+            String appointmentId,
+            String patientId,
+            PatientDocumentCategory category
+    );
+
+    List<PatientDocument> findByAppointmentId(String appointmentId);
+
+    List<PatientDocument> findByPatientId(String patientId);
 }

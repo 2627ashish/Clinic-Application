@@ -12,7 +12,7 @@ public record BookingSession(
         LocalDate selectedDate,
         LocalDateTime preferredTime,
         String patientName,
-        Integer age
+        LocalDate dateOfBirth
 ) {
     public enum Step {
         IDLE,
@@ -21,7 +21,7 @@ public record BookingSession(
         AWAITING_DATE,
         AWAITING_TIME,
         AWAITING_NAME,
-        AWAITING_AGE,
+        AWAITING_DATE_OF_BIRTH,
         AWAITING_GENDER
     }
 
@@ -54,18 +54,18 @@ public record BookingSession(
                 preferredTime.toLocalDate(), preferredTime, null, null);
     }
 
-    public static BookingSession awaitingAge(
+    public static BookingSession awaitingDateOfBirth(
             String problem, ClinicLocation clinicLocation, LocalDateTime preferredTime, String patientName
     ) {
-        return new BookingSession(Step.AWAITING_AGE, problem, clinicLocation,
+        return new BookingSession(Step.AWAITING_DATE_OF_BIRTH, problem, clinicLocation,
                 preferredTime.toLocalDate(), preferredTime, patientName, null);
     }
 
     public static BookingSession awaitingGender(
             String problem, ClinicLocation clinicLocation, LocalDateTime preferredTime,
-            String patientName, int age
+            String patientName, LocalDate dateOfBirth
     ) {
         return new BookingSession(Step.AWAITING_GENDER, problem, clinicLocation,
-                preferredTime.toLocalDate(), preferredTime, patientName, age);
+                preferredTime.toLocalDate(), preferredTime, patientName, dateOfBirth);
     }
 }

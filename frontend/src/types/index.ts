@@ -1,17 +1,13 @@
 import type { ClinicLocation } from '../utils/clinic';
-import type { ConsultationType } from './appointment';
+import type { AppointmentStatus, ConsultationType, MedicalDeclaration } from './appointment';
 
-export type AppointmentStatus =
-  | 'PENDING_DOCTOR_APPROVAL'
-  | 'CONFIRMED'
-  | 'RESCHEDULED'
-  | 'COMPLETED'
-  | 'CANCELLED';
+export type { AppointmentStatus } from './appointment';
 
 export interface Patient {
   id: string;
   fullName: string;
   phoneNumber: string;
+  dateOfBirth: string | null;
   age: number | null;
   gender: string | null;
   createdAt: string;
@@ -20,6 +16,8 @@ export interface Patient {
 export interface Appointment {
   id: string;
   patientId: string;
+  dateOfBirth: string | null;
+  medicalDeclaration: MedicalDeclaration | null;
   appointmentTime: string;
   clinicLocation: ClinicLocation;
   consultationType: ConsultationType;
@@ -38,6 +36,7 @@ export interface AppointmentView extends Appointment {
   patientName: string;
   phoneNumber: string;
   patientAge: number | null;
+  gender: string | null;
 }
 
 export interface PrescriptionItem {
@@ -100,7 +99,7 @@ export interface PatientDocumentView {
 export interface WalkInRequest {
   patientName: string;
   phoneNumber: string;
-  age: number;
+  dateOfBirth: string;
   gender: 'Male' | 'Female' | 'Other';
   clinicLocation: ClinicLocation;
   source: 'PHONE_CALL' | 'DIRECT_WALK_IN';

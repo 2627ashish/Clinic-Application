@@ -6,6 +6,8 @@
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/DoctorAuthServiceTest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/KafkaWhatsAppMessagePublisherTest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/MetaWhatsAppCloudApiClientTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/PatientAuthServiceImplTest.java
+/Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/PatientDocumentServiceTest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/PatientPortalServiceTest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/PhoneUtilsTest.java
 /Users/ashishchauhan/Dental clinic/dentalBilling.worktrees/Clinic-Application/backend/src/test/java/com/chaula/dental/service/WhatsAppConversationServiceTest.java

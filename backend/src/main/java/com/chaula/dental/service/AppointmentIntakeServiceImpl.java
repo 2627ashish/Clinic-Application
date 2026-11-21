@@ -42,13 +42,12 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
-        Patient patient = patientRepository.findByPhoneNumber(phoneNumber)
-                .or(() -> patientRepository.findFirstByPhoneNumberEndingWith(
-                        phoneNumber.substring(phoneNumber.length() - 10)))
+        Patient patient = PatientIdentityLookup.findMatching(
+                        patientRepository, phoneNumber, patientName, request.dateOfBirth())
                 .orElseGet(() -> Patient.builder().phoneNumber(phoneNumber).build());
         patient.setPhoneNumber(phoneNumber);
         patient.setFullName(patientName);
-        patient.setAge(request.age());
+        patient.setDateOfBirth(request.dateOfBirth());
         patient.setGender(request.gender().trim());
         List<String> medicalHistory = request.medicalHistory() == null ? List.of() : request.medicalHistory().stream()
                 .filter(value -> value != null && !value.isBlank())
@@ -57,8 +56,25 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
         if (medicalHistory.stream().anyMatch(value -> value.startsWith("None /"))) medicalHistory = List.of();
         patient.setMedicalHistory(medicalHistory);
         patient.setOngoingTreatments(cleanOptional(request.ongoingTreatments()));
-        patient.setIsPregnant(request.age() >= 18 && request.gender().equalsIgnoreCase("female")
-                ? request.isPregnant() : null);
+        boolean eligibleForPregnancyQuestions = patient.getCalculatedAge() >= 18
+                && request.gender().equalsIgnoreCase("female");
+        patient.setIsPregnant(eligibleForPregnancyQuestions ? request.isPregnant() : null);
+        Patient.MedicalDeclaration declaration = request.medicalDeclaration();
+        if (declaration != null) {
+            patient.setMedicalDeclaration(new Patient.MedicalDeclaration(
+                    declaration.hasChronicIllness(),
+                    declaration.takingLongTermMedication(),
+                    declaration.lignocaineConsent(),
+                    declaration.consentToTreatment(),
+                    declaration.adherenceConsent(),
+                    declaration.hadPreviousDentalTreatment(),
+                    declaration.rctCommitment(),
+                    eligibleForPregnancyQuestions ? request.isPregnant() : null,
+                    eligibleForPregnancyQuestions ? declaration.isBreastfeeding() : null,
+                    cleanOptional(declaration.illnessDetails()),
+                    cleanOptional(declaration.medicationDetails())
+            ));
+        }
         if (request.whatsappMarketingOptIn() != null) {
             patient.setWhatsappMarketingOptIn(request.whatsappMarketingOptIn());
             patient.setWhatsappMarketingOptInAt(request.whatsappMarketingOptIn() ? Instant.now() : null);
@@ -72,6 +88,8 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
                 .consultationType(consultationType)
                 .status(AppointmentStatus.PENDING_DOCTOR_APPROVAL)
                 .chiefComplaintSummary(cleanSymptoms(request.symptomsDescription()))
+                .dateOfBirth(savedPatient.getDateOfBirth())
+                .medicalDeclaration(savedPatient.getMedicalDeclaration())
                 .medicalHistory(savedPatient.getMedicalHistory())
                 .ongoingTreatments(savedPatient.getOngoingTreatments())
                 .isPregnant(savedPatient.getIsPregnant())
@@ -119,18 +137,7 @@ public class AppointmentIntakeServiceImpl implements AppointmentIntakeService {
     }
 
     private AppointmentResponse toResponse(Appointment appointment, Patient patient) {
-        return new AppointmentResponse(
-                appointment.getId(),
-                patient.getFullName(),
-                patient.getPhoneNumber(),
-                appointment.getAppointmentTime(),
-                ClinicLocation.defaultLocation(appointment.getClinicLocation()),
-                appointment.getStatus().name(),
-                appointment.getChiefComplaintSummary(),
-                appointment.getCreatedAt(),
-                appointment.getConsultationType() == null
-                        ? ConsultationType.IN_CLINIC : appointment.getConsultationType(),
-                appointment.getMeetingLink()
-        );
+        return AppointmentResponse.from(appointment, patient);
     }
+
 }

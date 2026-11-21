@@ -45,8 +45,7 @@ class WhatsAppSessionServiceTest {
     @Test
     void completesBookingAndPersistsAppointmentWithPendingStatus() {
         WhatsAppSessionService service = service();
-        when(patientRepository.findByPhoneNumber("919810764715")).thenReturn(Optional.empty());
-        when(patientRepository.findFirstByPhoneNumberEndingWith("9810764715")).thenReturn(Optional.empty());
+        when(patientRepository.findByPhoneNumberEndingWith("9810764715")).thenReturn(List.of());
         when(patientRepository.save(any(Patient.class))).thenAnswer(invocation -> {
             Patient patient = invocation.getArgument(0);
             patient.setId("patient-1");
@@ -66,11 +65,12 @@ class WhatsAppSessionServiceTest {
         service.handle(message("Hi"));
         service.handle(message("Tooth pain since yesterday"));
         service.handle(selection(menus, 0));
-        service.handle(selection(menus, 1));
+        service.handle(selection(menus, 1, 1));
         service.handle(selection(menus, 2, "More times"));
-        service.handle(selection(menus, 3, "6:30 PM"));
+        String selectedTime = menus.get(3).get(0).id();
+        service.handle(selection(menus, 3));
         service.handle(message("Anita Sharma"));
-        service.handle(message("24"));
+        service.handle(message("2002-11-20"));
         service.handle(new WhatsAppInboundMessage(
                 "message-id", PHONE, "[Non-text message: interactive]", menus.get(4).get(1).id()));
 
@@ -81,12 +81,11 @@ class WhatsAppSessionServiceTest {
         assertThat(appointment.getValue().getClinicLocation()).isEqualTo(ClinicLocation.SEC_44);
         ArgumentCaptor<Patient> patientCaptor = ArgumentCaptor.forClass(Patient.class);
         verify(patientRepository).save(patientCaptor.capture());
-        assertThat(patientCaptor.getValue().getAge()).isEqualTo(24);
+        assertThat(patientCaptor.getValue().getDateOfBirth()).isEqualTo(LocalDate.of(2002, 11, 20));
         assertThat(patientCaptor.getValue().getGender()).isEqualTo("Female");
         assertThat(appointment.getValue().getChiefComplaintSummary()).isEqualTo("Tooth pain since yesterday");
         assertThat(appointment.getValue().getAppointmentTime())
-                .isEqualTo(LocalDate.parse(menus.get(1).get(0).id().substring("book-date|".length()))
-                        .atTime(18, 30));
+                .isEqualTo(LocalDateTime.parse(selectedTime.substring("book-time|".length())));
 
         verify(messagePublisher).publishText(org.mockito.ArgumentMatchers.eq(PHONE),
                 org.mockito.ArgumentMatchers.contains("✅ *APPOINTMENT REQUEST RECEIVED*"));
@@ -117,7 +116,7 @@ class WhatsAppSessionServiceTest {
         service.handle(message("Hi"));
         service.handle(message("Cleaning"));
         service.handle(selection(menus, 0));
-        service.handle(selection(menus, 1));
+        service.handle(selection(menus, 1, 1));
 
         assertThat(service.hasActiveSession(PHONE)).isTrue();
         assertThat(menus).hasSize(3);
@@ -190,5 +189,10 @@ class WhatsAppSessionServiceTest {
                 .orElseThrow()
                 .id();
         return new WhatsAppInboundMessage("message-id", PHONE, "[Non-text message: interactive]", replyId);
+    }
+
+    private WhatsAppInboundMessage selection(List<List<WhatsAppListRow>> menus, int menuIndex, int rowIndex) {
+        return new WhatsAppInboundMessage(
+                "message-id", PHONE, "[Non-text message: interactive]", menus.get(menuIndex).get(rowIndex).id());
     }
 }

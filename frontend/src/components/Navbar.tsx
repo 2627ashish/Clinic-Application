@@ -1,4 +1,5 @@
-import { HeartPulse, LayoutDashboard, Stethoscope, UserRound } from 'lucide-react';
+import { LayoutDashboard, Stethoscope, UserRound } from 'lucide-react';
+import ClinicLogo from './ClinicLogo';
 
 export type ClinicPage = 'patient' | 'patientPortal' | 'doctor';
 
@@ -12,12 +13,10 @@ export default function Navbar({ activePage, onNavigate }: NavbarProps) {
     <header className="sticky top-0 z-30 border-b border-clinic-ink/5 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <button className="flex items-center gap-3 text-left" onClick={() => onNavigate('patient')}>
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-clinic-green text-white">
-            <HeartPulse size={23} strokeWidth={2.2} />
-          </span>
+          <ClinicLogo className="h-12 w-20 shrink-0" />
           <span>
             <span className="block text-base font-bold tracking-tight text-clinic-ink">Chauhan Dental Clinic</span>
-            <span className="block text-xs text-slate-500">Care that makes you smile</span>
+            <span className="block text-[10px] text-slate-500">Care that makes you smile • Your smile, our commitment</span>
           </span>
         </button>
         <nav className="flex w-full items-center justify-between gap-1 rounded-full bg-clinic-paper p-1 sm:w-auto sm:justify-start" aria-label="Main navigation">

@@ -2,14 +2,12 @@ package com.chaula.dental.service;
 
 import com.chaula.dental.domain.Patient;
 import com.chaula.dental.domain.TreatmentAndBill;
-import com.chaula.dental.dto.PatientOtpResponse;
-import com.chaula.dental.dto.PatientPortalSessionResponse;
+import com.chaula.dental.dto.AuthResponse;
 import com.chaula.dental.dto.PatientProfileView;
 import com.chaula.dental.dto.PatientVisitSummary;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
 import com.chaula.dental.util.PhoneUtils;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,74 +15,64 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class PatientPortalService {
-    private static final long OTP_SECONDS = 10 * 60;
     private static final long SESSION_SECONDS = 12 * 60 * 60;
-    private final Map<String, OtpEntry> pendingOtps = new ConcurrentHashMap<>();
     private final Map<String, PatientSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> activeSessionsByPatient = new ConcurrentHashMap<>();
     private final SecureRandom random = new SecureRandom();
     private final PatientRepository patients;
     private final TreatmentAndBillRepository treatments;
-    private final WhatsAppMessagePublisher publisher;
-    private final boolean mockOtp;
 
     public PatientPortalService(
             PatientRepository patients,
-            TreatmentAndBillRepository treatments,
-            WhatsAppMessagePublisher publisher,
-            @Value("${patient.portal.mock-otp:false}") boolean mockOtp
+            TreatmentAndBillRepository treatments
     ) {
         this.patients = patients;
         this.treatments = treatments;
-        this.publisher = publisher;
-        this.mockOtp = mockOtp;
     }
 
-    public PatientOtpResponse sendOtp(String rawPhone) {
-        String phone = normalize(rawPhone);
-        String code = String.format("%04d", random.nextInt(10_000));
-        pendingOtps.put(phone, new OtpEntry(code, Instant.now().plusSeconds(OTP_SECONDS), new AtomicInteger()));
-        publisher.publishText(phone, "Your Chauhan Dental Clinic login OTP is " + code + ". Valid for 10 minutes.");
-        return new PatientOtpResponse("If this number is registered, an OTP has been sent on WhatsApp.",
-                mockOtp ? code : null);
-    }
-
-    public PatientPortalSessionResponse verifyOtp(String rawPhone, String code) {
-        String phone = normalize(rawPhone);
-        OtpEntry entry = pendingOtps.get(phone);
-        if (entry == null || !entry.expiresAt().isAfter(Instant.now())
-                || entry.attempts().incrementAndGet() > 5 || !entry.code().equals(code)) {
-            if (entry != null && entry.attempts().get() > 5) pendingOtps.remove(phone, entry);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "The code is invalid or expired");
+    public AuthResponse createSessionsForPhone(String normalizedPhone) {
+        String tenDigits = normalizedPhone.substring(normalizedPhone.length() - 10);
+        List<Patient> candidates = new ArrayList<>(patients.findAllByPhoneNumber(normalizedPhone));
+        candidates.addAll(patients.findByPhoneNumberEndingWith(tenDigits));
+        candidates.addAll(patients.findByPhoneNumberRegex(phoneSuffixRegex(tenDigits)));
+        Map<String, Patient> matchedPatients = new LinkedHashMap<>();
+        candidates.stream()
+                .filter(patient -> phoneNumberMatches(patient.getPhoneNumber(), normalizedPhone))
+                .forEach(patient -> matchedPatients.putIfAbsent(patient.getId(), patient));
+        if (matchedPatients.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No patient account was found for this number");
         }
-        Patient patient = findPatientByPhone(phone)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                        "No patient account was found for this number"));
-        pendingOtps.remove(phone, entry);
+
+        List<AuthResponse.PatientSession> patientSessions = matchedPatients.values().stream()
+                .map(this::createSession)
+                .toList();
+        return new AuthResponse(patientSessions);
+    }
+
+    private AuthResponse.PatientSession createSession(Patient patient) {
         String token = newToken();
         activeSessionsByPatient.compute(patient.getId(), (patientId, previousToken) -> {
             if (previousToken != null) sessions.remove(previousToken);
             sessions.put(token, new PatientSession(patientId, Instant.now().plusSeconds(SESSION_SECONDS)));
             return token;
         });
-        return new PatientPortalSessionResponse(token, patient.getFullName());
+        return new AuthResponse.PatientSession(token, patient.getFullName());
     }
 
-    private Optional<Patient> findPatientByPhone(String normalizedPhone) {
-        String tenDigits = normalizedPhone.substring(normalizedPhone.length() - 10);
-        Optional<Patient> exact = patients.findByPhoneNumber(normalizedPhone);
-        if (exact.isPresent()) return exact;
-        Optional<Patient> suffix = patients.findFirstByPhoneNumberEndingWith(tenDigits);
-        if (suffix.isPresent()) return suffix;
-        return patients.findFirstByPhoneNumberRegex(phoneSuffixRegex(tenDigits));
+    private boolean phoneNumberMatches(String storedPhone, String normalizedPhone) {
+        try {
+            return PhoneUtils.normalizeIndianPhone(storedPhone).equals(normalizedPhone);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private String phoneSuffixRegex(String digits) {
@@ -109,6 +97,7 @@ public class PatientPortalService {
                 patient.getFullName(),
                 patient.getPhoneNumber(),
                 patient.getAge(),
+                patient.getDateOfBirth(),
                 patient.getGender()
         );
     }
@@ -148,21 +137,10 @@ public class PatientPortalService {
         );
     }
 
-    private String normalize(String phone) {
-        try {
-            return PhoneUtils.normalizeIndianPhone(phone);
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
-        }
-    }
-
     private String newToken() {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private record OtpEntry(String code, Instant expiresAt, AtomicInteger attempts) {
     }
 
     private record PatientSession(String patientId, Instant expiresAt) {

@@ -3,6 +3,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://clinic-application-i6fl.onrender.com/api/:path*"
+    },
+    {
+      "source": "/doctor/login",
+      "destination": "/index.html"
     }
   ]
 }

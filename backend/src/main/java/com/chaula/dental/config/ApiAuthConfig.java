@@ -14,7 +14,12 @@ public class ApiAuthConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(doctorAuthInterceptor)
-                .addPathPatterns("/api/appointments/**", "/api/campaigns/**")
-                .excludePathPatterns("/api/appointments/ai-intake");
+                .addPathPatterns("/api/appointments/**", "/api/campaigns/**", "/api/patients/**")
+                .excludePathPatterns(
+                        "/api/appointments/ai-intake",
+                        "/api/appointments/*/bill-pdf",
+                        "/api/appointments/*/prescription-pdf",
+                        "/api/appointments/*/handwritten-rx/download"
+                );
     }
 }

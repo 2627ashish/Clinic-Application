@@ -83,6 +83,62 @@ class MetaWhatsAppCloudApiClientTest {
     }
 
     @Test
+    void sendsHelloWorldTemplateEventsAsApprovedTemplatePayloads() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        MetaWhatsAppCloudApiClient client = new MetaWhatsAppCloudApiClient(
+                builder, "https://graph.facebook.com", "test-token", "phone-id");
+        server.expect(requestTo("https://graph.facebook.com/v21.0/phone-id/messages"))
+                .andExpect(content().json("""
+                        {
+                          "messaging_product": "whatsapp",
+                          "to": "919810764715",
+                          "type": "template",
+                          "template": {
+                            "name": "hello_world",
+                            "language": {"code": "en_US"}
+                          }
+                        }
+                        """))
+                .andRespond(withSuccess());
+
+        client.send(WhatsAppOutboundMessage.template(
+                "919810764715", "", "hello_world", "en_US", List.of()));
+        server.verify();
+    }
+
+    @Test
+    void fallsBackToHelloWorldTemplateForReengagementWindowError() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        MetaWhatsAppCloudApiClient client = new MetaWhatsAppCloudApiClient(
+                builder, "https://graph.facebook.com", "test-token", "phone-id");
+        server.expect(requestTo("https://graph.facebook.com/v21.0/phone-id/messages"))
+                .andExpect(content().json("""
+                        {"type":"text","to":"919810764715"}
+                        """, false))
+                .andRespond(withBadRequest()
+                        .body("{\"error\":{\"code\":131047,\"message\":\"Re-engagement message\"}}")
+                        .contentType(MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://graph.facebook.com/v21.0/phone-id/messages"))
+                .andExpect(content().json("""
+                        {
+                          "messaging_product": "whatsapp",
+                          "to": "919810764715",
+                          "type": "template",
+                          "template": {
+                            "name": "hello_world",
+                            "language": {"code": "en_US"}
+                          }
+                        }
+                        """))
+                .andRespond(withSuccess());
+
+        client.send(WhatsAppOutboundMessage.text("919810764715", "Visit follow-up"));
+        server.verify();
+    }
+
+    @Test
     void uploadsPdfThenSendsDocumentUsingTheReturnedMediaId() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

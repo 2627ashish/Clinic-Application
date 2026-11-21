@@ -5,6 +5,7 @@ import type { AppointmentView, WalkInRequest } from '../types';
 import { createWalkIn } from '../api/client';
 import { clinicDetails, clinicLocations, normalizeIndianPhone } from '../utils/clinic';
 import type { ClinicLocation } from '../utils/clinic';
+import { calculateAge } from '../utils/demographics';
 
 interface WalkInIntakeCardProps {
   appointments: AppointmentView[];
@@ -14,7 +15,7 @@ interface WalkInIntakeCardProps {
 export default function WalkInIntakeCard({ appointments, onStartConsultation }: WalkInIntakeCardProps) {
   const [patientName, setPatientName] = useState('');
   const [phone, setPhone] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Female');
   const [clinicLocation, setClinicLocation] = useState<ClinicLocation>('SEC_44');
   const [source, setSource] = useState<WalkInRequest['source']>('DIRECT_WALK_IN');
@@ -22,6 +23,7 @@ export default function WalkInIntakeCard({ appointments, onStartConsultation }: 
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const age = calculateAge(dateOfBirth);
 
   const todayWalkIns = appointments.filter((appointment) =>
     appointment.intakeSource
@@ -41,7 +43,7 @@ export default function WalkInIntakeCard({ appointments, onStartConsultation }: 
       const request: WalkInRequest = {
         patientName: patientName.trim(),
         phoneNumber: normalizedPhone,
-        age: Number(age),
+        dateOfBirth,
         gender,
         clinicLocation,
         source,
@@ -51,7 +53,7 @@ export default function WalkInIntakeCard({ appointments, onStartConsultation }: 
       const created = await createWalkIn(request);
       setPatientName('');
       setPhone('');
-      setAge('');
+      setDateOfBirth('');
       setQuotedFee('');
       setNotes('');
       onStartConsultation(created.id);
@@ -76,8 +78,9 @@ export default function WalkInIntakeCard({ appointments, onStartConsultation }: 
           <input required type="tel" inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal" />
         </label>
         <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm font-semibold text-clinic-ink">Age
-            <input required type="number" min="1" max="120" value={age} onChange={(event) => setAge(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal" />
+          <label className="text-sm font-semibold text-clinic-ink">Date of birth
+            <input required type="date" max={new Date().toISOString().slice(0, 10)} value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal" />
+            <span className="mt-1 block text-xs font-normal text-slate-500">Live age: {age === null ? '—' : `${age} years`}</span>
           </label>
           <label className="text-sm font-semibold text-clinic-ink">Gender
             <select value={gender} onChange={(event) => setGender(event.target.value as WalkInRequest['gender'])} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal">

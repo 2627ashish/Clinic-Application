@@ -75,4 +75,13 @@ public class PatientDocumentService {
         return documents.findByIdAndPatientId(documentId, patientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
     }
+
+    public PatientDocument findHandwrittenForPatient(String appointmentId, String patientId) {
+        return documents.findFirstByAppointmentIdAndPatientIdAndCategoryOrderByCreatedAtDesc(
+                        appointmentId, patientId, PatientDocumentCategory.HANDWRITTEN_RX)
+                .filter(document -> "image/png".equalsIgnoreCase(document.getContentType())
+                        || "image/jpeg".equalsIgnoreCase(document.getContentType()))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No handwritten prescription recorded for this visit."));
+    }
 }

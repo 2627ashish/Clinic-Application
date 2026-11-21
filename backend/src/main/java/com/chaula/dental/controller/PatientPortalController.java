@@ -2,10 +2,6 @@ package com.chaula.dental.controller;
 
 import com.chaula.dental.domain.Patient;
 import com.chaula.dental.domain.TreatmentAndBill;
-import com.chaula.dental.dto.PatientOtpRequest;
-import com.chaula.dental.dto.PatientOtpResponse;
-import com.chaula.dental.dto.PatientOtpVerifyRequest;
-import com.chaula.dental.dto.PatientPortalSessionResponse;
 import com.chaula.dental.dto.PatientProfileView;
 import com.chaula.dental.dto.PatientVisitSummary;
 import com.chaula.dental.dto.PatientDocumentView;
@@ -14,15 +10,12 @@ import com.chaula.dental.service.PatientDocumentService;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.service.PatientPortalService;
 import com.chaula.dental.service.PdfGenerationService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,16 +30,6 @@ public class PatientPortalController {
     private final PatientRepository patientRepository;
     private final PdfGenerationService pdfService;
     private final PatientDocumentService documentService;
-
-    @PostMapping("/otp")
-    public PatientOtpResponse sendOtp(@Valid @RequestBody PatientOtpRequest request) {
-        return portalService.sendOtp(request.phoneNumber());
-    }
-
-    @PostMapping("/verify")
-    public PatientPortalSessionResponse verifyOtp(@Valid @RequestBody PatientOtpVerifyRequest request) {
-        return portalService.verifyOtp(request.phoneNumber(), request.code());
-    }
 
     @GetMapping("/visits")
     public List<PatientVisitSummary> visits(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {

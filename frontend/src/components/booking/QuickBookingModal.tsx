@@ -2,9 +2,11 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Check, X } from 'lucide-react';
 import { submitAiIntake } from '../../api/appointmentApi';
-import type { AppointmentResponse, ConsultationType } from '../../types/appointment';
+import type { AppointmentResponse, ConsultationType, MedicalDeclaration } from '../../types/appointment';
 import { clinicDetails, clinicLocations, isClinicLocation, normalizeIndianPhone } from '../../utils/clinic';
 import type { ClinicLocation } from '../../utils/clinic';
+import { calculateAge } from '../../utils/demographics';
+import MedicalDeclarationFields from './MedicalDeclarationFields';
 import WheelSlotPicker from '../intake/WheelSlotPicker';
 
 const medicalHistoryOptions = [
@@ -19,7 +21,7 @@ const medicalHistoryOptions = [
 interface QuickBookingModalProps {
   onClose: () => void;
   initialSymptoms?: string;
-  initialAge?: number;
+  initialDateOfBirth?: string;
   initialGender?: 'Male' | 'Female' | 'Other' | '';
   initialConsultationType?: ConsultationType;
 }
@@ -27,7 +29,7 @@ interface QuickBookingModalProps {
 export default function QuickBookingModal({
   onClose,
   initialSymptoms = '',
-  initialAge,
+  initialDateOfBirth,
   initialGender = '',
   initialConsultationType = 'IN_CLINIC',
 }: QuickBookingModalProps) {
@@ -35,17 +37,33 @@ export default function QuickBookingModal({
   const [clinicLocation, setClinicLocation] = useState<ClinicLocation>('SEC_44');
   const [consultationType, setConsultationType] = useState<ConsultationType>(initialConsultationType);
   const [patientName, setPatientName] = useState('');
-  const [age, setAge] = useState(initialAge ? String(initialAge) : '');
+  const [dateOfBirth, setDateOfBirth] = useState(initialDateOfBirth ?? '');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | ''>(initialGender);
   const [medicalHistory, setMedicalHistory] = useState<string[]>([]);
   const [ongoingTreatments, setOngoingTreatments] = useState('');
   const [isPregnant, setIsPregnant] = useState<boolean | null>(null);
+  const [isBreastfeeding, setIsBreastfeeding] = useState<boolean | null>(null);
+  const [medicalDeclaration, setMedicalDeclaration] = useState<MedicalDeclaration>({
+    hasChronicIllness: false,
+    takingLongTermMedication: false,
+    lignocaineConsent: false,
+    consentToTreatment: false,
+    adherenceConsent: false,
+    hadPreviousDentalTreatment: false,
+    rctCommitment: false,
+    isPregnant: null,
+    isBreastfeeding: null,
+    illnessDetails: '',
+    medicationDetails: '',
+  });
   const [phoneNumber, setPhoneNumber] = useState('');
   const [symptomsDescription, setSymptomsDescription] = useState(initialSymptoms);
   const [whatsappMarketingOptIn, setWhatsappMarketingOptIn] = useState(false);
   const [appointment, setAppointment] = useState<AppointmentResponse | null>(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const age = calculateAge(dateOfBirth);
+  const todayDate = new Date().toISOString().slice(0, 10);
 
   async function submitBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,12 +77,12 @@ export default function QuickBookingModal({
       setError('Choose an available appointment time to continue.');
       return;
     }
-    if (!age || Number(age) < 1 || Number(age) > 120 || !gender) {
-      setError('Enter an age from 1 to 120 and choose a gender.');
+    if (age === null || age < 1 || age > 120 || !gender) {
+      setError('Enter a valid date of birth (age 1 to 120) and choose a gender.');
       return;
     }
-    if (gender === 'Female' && Number(age) >= 18 && isPregnant === null) {
-      setError('Please answer the pregnancy and breastfeeding question to continue.');
+    if (gender === 'Female' && age >= 18 && (isPregnant === null || isBreastfeeding === null)) {
+      setError('Please answer both pregnancy and breastfeeding questions to continue.');
       return;
     }
 
@@ -73,11 +91,16 @@ export default function QuickBookingModal({
       const result = await submitAiIntake({
         patientName: patientName.trim(),
         phoneNumber: normalizedPhone,
-        age: Number(age),
+        dateOfBirth,
         gender,
         medicalHistory,
         ongoingTreatments: ongoingTreatments.trim(),
-        isPregnant: gender === 'Female' && Number(age) >= 18 ? isPregnant : null,
+        isPregnant: gender === 'Female' && age >= 18 ? isPregnant : null,
+        medicalDeclaration: {
+          ...medicalDeclaration,
+          isPregnant: gender === 'Female' && age >= 18 ? isPregnant : null,
+          isBreastfeeding: gender === 'Female' && age >= 18 ? isBreastfeeding : null,
+        },
         preferredTime,
         clinicLocation,
         symptomsDescription: symptomsDescription.trim(),
@@ -163,13 +186,19 @@ export default function QuickBookingModal({
                 <input required maxLength={100} autoComplete="name" value={patientName} onChange={(event) => setPatientName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />
               </label>
               <label className="text-sm font-semibold text-clinic-ink">
-                Age
-                <input required min="1" max="120" type="number" inputMode="numeric" value={age}
+                Date of birth
+                <input required max={todayDate} type="date" value={dateOfBirth}
                   onChange={(event) => {
-                    setAge(event.target.value);
-                    if (Number(event.target.value) < 18) setIsPregnant(null);
+                    setDateOfBirth(event.target.value);
+                    if ((calculateAge(event.target.value) ?? 0) < 18) {
+                      setIsPregnant(null);
+                      setIsBreastfeeding(null);
+                    }
                   }}
                   className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  Live age: {age === null ? '—' : `${age} years`}
+                </span>
               </label>
               <label className="text-sm font-semibold text-clinic-ink">
                 WhatsApp number
@@ -183,7 +212,10 @@ export default function QuickBookingModal({
                     <button key={value} type="button" aria-pressed={gender === value}
                       onClick={() => {
                         setGender(value);
-                        if (value !== 'Female' || Number(age) < 18) setIsPregnant(null);
+                        if (value !== 'Female' || (age ?? 0) < 18) {
+                          setIsPregnant(null);
+                          setIsBreastfeeding(null);
+                        }
                       }}
                       className={`min-h-11 flex-1 rounded-full border px-3 text-sm font-semibold ${gender === value ? 'border-clinic-green bg-clinic-mint text-clinic-green' : 'border-slate-200 text-slate-600'}`}>
                       {value}
@@ -221,20 +253,16 @@ export default function QuickBookingModal({
                 onChange={(event) => setOngoingTreatments(event.target.value)}
                 className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />
             </label>
-            {gender === 'Female' && Number(age) >= 18 && (
-              <fieldset className="text-sm font-semibold text-clinic-ink">
-                <legend>Are you currently pregnant or breastfeeding? / क्या आप गर्भवती हैं या स्तनपान करा रही हैं?</legend>
-                <div className="mt-2 flex gap-2">
-                  {([[true, 'Yes / हाँ'], [false, 'No / नहीं']] as const).map(([answer, label]) => (
-                    <button key={label} type="button" aria-pressed={isPregnant === answer}
-                      onClick={() => setIsPregnant(answer)}
-                      className={`min-h-11 flex-1 rounded-full border px-3 text-sm font-semibold ${isPregnant === answer ? 'border-clinic-green bg-clinic-mint text-clinic-green' : 'border-slate-200 text-slate-600'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            )}
+            <MedicalDeclarationFields
+              gender={gender}
+              age={age}
+              declaration={medicalDeclaration}
+              setDeclaration={setMedicalDeclaration}
+              isPregnant={isPregnant}
+              setIsPregnant={setIsPregnant}
+              isBreastfeeding={isBreastfeeding}
+              setIsBreastfeeding={setIsBreastfeeding}
+            />
             <label className="block text-sm font-semibold text-clinic-ink">
               Quick reason for visit
               <textarea required maxLength={1000} rows={3} value={symptomsDescription} onChange={(event) => setSymptomsDescription(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-clinic-green focus:ring-2 focus:ring-clinic-green/15" />

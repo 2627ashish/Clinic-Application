@@ -3,9 +3,11 @@ com/chaula/dental/service/AppointmentIntakeServiceImplTest.class
 com/chaula/dental/service/AppointmentServiceTest.class
 com/chaula/dental/service/PatientPortalServiceTest.class
 com/chaula/dental/service/DoctorAuthServiceTest.class
+com/chaula/dental/service/PatientAuthServiceImplTest.class
 com/chaula/dental/service/PhoneUtilsTest.class
 com/chaula/dental/service/AppointmentWhatsAppCopyTest.class
 com/chaula/dental/service/WhatsAppInboundConsumerTest.class
+com/chaula/dental/service/PatientDocumentServiceTest.class
 com/chaula/dental/service/ClinicScheduleTest.class
 com/chaula/dental/service/CampaignServiceTest.class
 com/chaula/dental/service/KafkaWhatsAppMessagePublisherTest.class

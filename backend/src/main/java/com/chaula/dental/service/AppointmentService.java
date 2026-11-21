@@ -8,8 +8,8 @@ import com.chaula.dental.domain.Patient;
 import com.chaula.dental.domain.PatientDocument;
 import com.chaula.dental.domain.PatientDocumentCategory;
 import com.chaula.dental.domain.TreatmentAndBill;
+import com.chaula.dental.dto.AppointmentResponse;
 import com.chaula.dental.dto.AppointmentStatusUpdateRequest;
-import com.chaula.dental.dto.AppointmentView;
 import com.chaula.dental.dto.ConsultationCompleteRequest;
 import com.chaula.dental.dto.WalkInRequest;
 import com.chaula.dental.repository.AppointmentRepository;
@@ -17,6 +17,11 @@ import com.chaula.dental.repository.PatientDocumentRepository;
 import com.chaula.dental.repository.PatientRepository;
 import com.chaula.dental.repository.TreatmentAndBillRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -37,16 +43,39 @@ public class AppointmentService {
     private final WhatsAppNotificationService whatsappService;
     private final PdfGenerationService pdfService;
 
-    public List<AppointmentView> getAppointments() {
-        return appointmentRepository.findAll().stream()
+    public Page<AppointmentResponse> getAppointments(int page, int size, String status, String type) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(
+                safePage, safeSize, Sort.by(Sort.Direction.ASC, "appointmentTime"));
+        List<AppointmentStatus> requestedStatuses = parseStatuses(status);
+        ConsultationType requestedType = parseType(type);
+        Page<Appointment> appointmentPage;
+        if (requestedStatuses != null && requestedStatuses.size() > 1 && requestedType != null) {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNullAndStatusInAndConsultationType(
+                    requestedStatuses, requestedType, pageable);
+        } else if (requestedStatuses != null && requestedStatuses.size() > 1) {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNullAndStatusIn(requestedStatuses, pageable);
+        } else if (requestedStatuses != null && requestedType != null) {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNullAndStatusAndConsultationType(
+                    requestedStatuses.get(0), requestedType, pageable);
+        } else if (requestedStatuses != null) {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNullAndStatus(
+                    requestedStatuses.get(0), pageable);
+        } else if (requestedType != null) {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNullAndConsultationType(requestedType, pageable);
+        } else {
+            appointmentPage = appointmentRepository.findByDeletedAtIsNull(pageable);
+        }
+        List<AppointmentResponse> content = appointmentPage.getContent().stream()
                 .map(appointment -> {
                     Patient patient = patientRepository.findById(appointment.getPatientId())
                             .orElseThrow(() -> new ResponseStatusException(
                                     HttpStatus.NOT_FOUND, "Patient for appointment was not found"));
-                    return AppointmentView.from(
-                            appointment, patient.getFullName(), patient.getPhoneNumber(), patient.getAge());
+                    return AppointmentResponse.from(appointment, patient);
                 })
                 .toList();
+        return new PageImpl<>(content, pageable, appointmentPage.getTotalElements());
     }
 
     public Appointment createWalkIn(WalkInRequest request) {
@@ -57,13 +86,12 @@ public class AppointmentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
 
-        Patient patient = patientRepository.findByPhoneNumber(phoneNumber)
-                .or(() -> patientRepository.findFirstByPhoneNumberEndingWith(
-                        phoneNumber.substring(phoneNumber.length() - 10)))
+        Patient patient = PatientIdentityLookup.findMatching(
+                        patientRepository, phoneNumber, request.patientName(), request.dateOfBirth())
                 .orElseGet(() -> Patient.builder().phoneNumber(phoneNumber).build());
         patient.setPhoneNumber(phoneNumber);
         patient.setFullName(request.patientName().strip());
-        patient.setAge(request.age());
+        patient.setDateOfBirth(request.dateOfBirth());
         patient.setGender(request.gender().strip());
         Patient savedPatient = patientRepository.save(patient);
 
@@ -80,6 +108,8 @@ public class AppointmentService {
                 .medicalHistory(savedPatient.getMedicalHistory() == null ? List.of() : savedPatient.getMedicalHistory())
                 .ongoingTreatments(savedPatient.getOngoingTreatments())
                 .isPregnant(savedPatient.getIsPregnant())
+                .dateOfBirth(savedPatient.getDateOfBirth())
+                .medicalDeclaration(savedPatient.getMedicalDeclaration())
                 .build());
     }
 
@@ -189,6 +219,8 @@ public class AppointmentService {
         byte[] pdf = pdfService.generateVisitSummaryPdf(patient, treatment);
         whatsappService.sendDocumentAsync(patient.getPhoneNumber(),
                 "visit-summary.pdf", pdf);
+        whatsappService.sendTextMessageAsync(patient.getPhoneNumber(),
+                AppointmentWhatsAppCopy.postTreatmentFeedback(patient.getFullName()));
         if (handwrittenPrescription != null) {
             whatsappService.sendImageAsync(
                     patient.getPhoneNumber(),
@@ -201,6 +233,17 @@ public class AppointmentService {
         return treatment;
     }
 
+    public void deleteAppointment(String id) {
+        Appointment appointment = findAppointment(id);
+        if (treatmentRepository.findByAppointmentId(id).isPresent()
+                || !patientDocumentRepository.findByAppointmentId(id).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This appointment has clinical records and cannot be deleted.");
+        }
+        appointment.setDeletedAt(Instant.now());
+        appointmentRepository.save(appointment);
+    }
+
     private Appointment findAppointment(String id) {
         return appointmentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found"));
@@ -209,6 +252,27 @@ public class AppointmentService {
     private Patient findPatient(String id) {
         return patientRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+    }
+
+    private List<AppointmentStatus> parseStatuses(String status) {
+        if (status == null || status.isBlank()) return null;
+        try {
+            return java.util.Arrays.stream(status.split(","))
+                    .map(value -> AppointmentStatus.valueOf(value.trim().toUpperCase()))
+                    .distinct()
+                    .toList();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown appointment status", exception);
+        }
+    }
+
+    private ConsultationType parseType(String type) {
+        if (type == null || type.isBlank()) return null;
+        try {
+            return ConsultationType.valueOf(type.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown appointment type", exception);
+        }
     }
 
 }

@@ -6,7 +6,9 @@ import Navbar from './components/Navbar';
 import type { ClinicPage } from './components/Navbar';
 
 export default function App() {
-  const [page, setPage] = useState<ClinicPage>('patient');
+  const [page, setPage] = useState<ClinicPage>(() =>
+    window.location.pathname === '/doctor/login' ? 'doctor' : 'patient',
+  );
 
   return (
     <div className="min-h-screen bg-clinic-paper">

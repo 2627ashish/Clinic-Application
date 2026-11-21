@@ -1,6 +1,8 @@
 export type ClinicLocation = 'SEC_44' | 'SEC_82';
 export const clinicLocations: ClinicLocation[] = ['SEC_44', 'SEC_82'];
 
+export const justDialProfileUrl = 'https://www.justdial.com/Noida/Chauhan-Dental-Clinic-Near-Chauhan-Stationary-Noida-Sector-44/011PXX11-XX11-130213122057-G9H9_BZDET';
+
 export function isClinicLocation(value: string): value is ClinicLocation {
   return value === 'SEC_44' || value === 'SEC_82';
 }

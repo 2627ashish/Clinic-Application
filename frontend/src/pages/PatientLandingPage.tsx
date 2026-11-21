@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MessageCircle } from 'lucide-react';
+import ClinicLogo from '../components/ClinicLogo';
 import QuickBookingModal from '../components/booking/QuickBookingModal';
 import AiSelfHelpReceptionistModal from '../components/intake/AiSelfHelpReceptionistModal';
 import ClinicContactBar from '../components/landing/ClinicContactBar';
@@ -7,6 +8,7 @@ import DentalFaqSection from '../components/landing/DentalFaqSection';
 import DoctorVideoShowcase from '../components/landing/DoctorVideoShowcase';
 import HeroSection from '../components/landing/HeroSection';
 import ServicesSection from '../components/landing/ServicesSection';
+import MobileStickyBar from '../components/layout/MobileStickyBar';
 import type { ClinicPage } from '../components/Navbar';
 import type { ConsultationType } from '../types/appointment';
 
@@ -18,28 +20,32 @@ export default function PatientLandingPage({ onNavigate }: PatientLandingPagePro
   const [showSelfHelp, setShowSelfHelp] = useState(false);
   const [showQuickBooking, setShowQuickBooking] = useState(false);
   const [bookingSymptoms, setBookingSymptoms] = useState('');
-  const [bookingAge, setBookingAge] = useState<number>();
+  const [bookingDateOfBirth, setBookingDateOfBirth] = useState<string>();
   const [bookingGender, setBookingGender] = useState<'Male' | 'Female' | 'Other' | ''>('');
   const [bookingConsultationType, setBookingConsultationType] = useState<ConsultationType>('IN_CLINIC');
 
-  function escalateToBooking(symptoms: string, age: number, gender: 'Male' | 'Female' | 'Other', consultationType: ConsultationType) {
+  function escalateToBooking(symptoms: string, dateOfBirth: string, gender: 'Male' | 'Female' | 'Other', consultationType: ConsultationType) {
     setBookingSymptoms(symptoms);
-    setBookingAge(age);
+    setBookingDateOfBirth(dateOfBirth);
     setBookingGender(gender);
     setBookingConsultationType(consultationType);
     setShowSelfHelp(false);
     setShowQuickBooking(true);
   }
 
+  function openQuickBooking(procedure = '') {
+    setBookingSymptoms(procedure);
+    setBookingDateOfBirth(undefined);
+    setBookingGender('');
+    setBookingConsultationType('IN_CLINIC');
+    setShowSelfHelp(false);
+    setShowQuickBooking(true);
+  }
+
   return (
-    <main>
-      <HeroSection
-        onQuickBooking={() => {
-          setBookingSymptoms('');
-          setShowQuickBooking(true);
-        }}
-      />
-      <ServicesSection />
+    <main className="pb-20 md:pb-0">
+      <HeroSection onQuickBooking={() => openQuickBooking()} />
+      <ServicesSection onBookConsultation={openQuickBooking} />
       <DentalFaqSection />
       <DoctorVideoShowcase />
 
@@ -57,7 +63,10 @@ export default function PatientLandingPage({ onNavigate }: PatientLandingPagePro
       </section>
 
       <footer className="flex flex-col items-center justify-between gap-3 border-t border-clinic-ink/5 bg-white px-5 py-6 text-xs text-slate-500 sm:flex-row sm:px-8">
-        <span>© {new Date().getFullYear()} Chauhan Dental Clinic · Care that makes you smile</span>
+        <span className="flex items-center gap-3">
+          <ClinicLogo className="h-12 w-[4.5rem] shrink-0" />
+          <span>© {new Date().getFullYear()} Chauhan Dental Clinic<br />Care that makes you smile • Your smile, our commitment</span>
+        </span>
         <button type="button" onClick={() => onNavigate('doctor')} className="font-semibold text-clinic-green hover:text-clinic-ink">Doctor portal</button>
       </footer>
 
@@ -67,12 +76,14 @@ export default function PatientLandingPage({ onNavigate }: PatientLandingPagePro
           setShowSelfHelp(true);
         }}
         aria-label="Talk to AI Receptionist Maya"
-        className="fixed bottom-5 right-5 z-30 inline-flex min-h-12 items-center gap-2 rounded-full bg-clinic-green px-5 py-3.5 text-sm font-semibold text-white shadow-xl transition hover:-translate-y-0.5 hover:bg-clinic-ink"
+        className="fixed bottom-24 right-4 z-30 inline-flex min-h-12 items-center gap-2 rounded-full bg-clinic-green px-4 py-3.5 text-sm font-semibold text-white shadow-xl transition hover:-translate-y-0.5 hover:bg-clinic-ink sm:right-5 sm:px-5 md:bottom-5"
       >
         <MessageCircle size={18} aria-hidden="true" />
-        <span>Talk to AI Receptionist (Maya)</span>
+        <span className="hidden sm:inline">Talk to AI Receptionist (Maya)</span>
+        <span className="sm:hidden">Ask Maya</span>
       </button>
 
+      <MobileStickyBar onBookAppointment={() => openQuickBooking()} />
       {showSelfHelp && (
         <AiSelfHelpReceptionistModal
           onClose={() => setShowSelfHelp(false)}
@@ -82,7 +93,7 @@ export default function PatientLandingPage({ onNavigate }: PatientLandingPagePro
       {showQuickBooking && (
         <QuickBookingModal
           initialSymptoms={bookingSymptoms}
-          initialAge={bookingAge}
+          initialDateOfBirth={bookingDateOfBirth}
           initialGender={bookingGender}
           initialConsultationType={bookingConsultationType}
           onClose={() => setShowQuickBooking(false)}
